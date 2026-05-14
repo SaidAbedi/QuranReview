@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+.AppleDouble
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Compiled output
+dist/
+build/
+
+# Dependencies
+node_modules/

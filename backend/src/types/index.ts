@@ -64,6 +64,27 @@ export class AppError extends Error {
   }
 }
 
+// ---- Profile types -------------------------------------------------------
+
+export type OnboardingStatus = 'new' | 'pending_assignment' | 'active' | 'inactive';
+
+export interface UserProfile {
+  preferredLanguage: string | null;
+  timezone: string | null;
+  studentAgeGroup: string | null;
+  teacherCapacity: number | null;
+  teacherCurrentLoad: number;
+  onboardingStatus: OnboardingStatus;
+}
+
+export interface MeResponse {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  profile: UserProfile;
+}
+
 // ---- Pagination ----------------------------------------------------------
 
 export interface PaginationParams {

@@ -1,9 +1,30 @@
 # Phase 4 — Quran Content Service Testing Guide
 
-## SDK Version
+## Auth Approach
 
-`@quranjs/api@3.2.0` (pinned). The SDK handles OAuth2 client-credentials token
-acquisition, caching, and refresh automatically.
+`@quranjs/api` is used for **TypeScript types only**. All HTTP is handled by the custom
+`QfTokenManager` + `QfApiClient` inside `QuranContentService.ts`.
+
+**Why:** The SDK sends `client_id`/`client_secret` in the form body for token exchange.
+The Quran.Foundation OAuth2 server requires HTTP Basic auth. The SDK has no override for this.
+
+Token request (what `QfTokenManager` sends):
+```
+POST /oauth2/token
+Authorization: Basic base64(client_id:client_secret)
+Content-Type: application/x-www-form-urlencoded
+Body: grant_type=client_credentials&scope=content
+```
+
+Content API requests (what `QfApiClient` sends):
+```
+GET /content/api/v4/<path>?<params>
+x-auth-token: <access_token>
+x-client-id:  <client_id>
+Accept: application/json
+```
+
+On `401`: cached token is invalidated, fresh token is fetched, request is retried **once**.
 
 ---
 
@@ -16,39 +37,76 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_ANON_KEY=your-anon-key
 
-QURAN_FOUNDATION_CLIENT_ID=<your_client_id>
-QURAN_FOUNDATION_CLIENT_SECRET=<your_client_secret>
+QURAN_FOUNDATION_ENV=production          # use 'production' for real content API calls
+QURAN_FOUNDATION_PRELIVE_CLIENT_ID=...
+QURAN_FOUNDATION_PRELIVE_CLIENT_SECRET=...
+QURAN_FOUNDATION_PROD_CLIENT_ID=...
+QURAN_FOUNDATION_PROD_CLIENT_SECRET=...
 QURAN_FOUNDATION_DEFAULT_MUSHAF_ID=1
 ```
 
-> **Security note:** The Quran.Foundation credentials are backend-only.
-> The mobile app never calls Quran.Foundation directly — it calls our backend,
-> which proxies and caches the response. Never add these vars to any Expo / mobile
-> configuration.
+> **Security note:** Quran.Foundation credentials are backend-only. Never add them to any
+> Expo / mobile configuration.
+
+> **Prelive note:** Prelive credentials (`prelive-oauth2.quran.foundation`) can obtain tokens
+> successfully, but the content API (`apis.quran.foundation`) only accepts production-issued
+> tokens. Set `QURAN_FOUNDATION_ENV=production` for real content API calls. Prelive is useful
+> only for verifying the OAuth2 token exchange step.
 
 ---
 
-## Verifying Credentials (Direct SDK Probe)
+## Credential Probe (Manual HTTP)
 
-Before running the full backend tests, confirm the SDK can exchange credentials for a token:
+Before running the full backend, confirm credentials and headers work:
 
 ```bash
 cd backend
+
 node -e "
-const { createServerClient } = require('@quranjs/api/server');
-const client = createServerClient({
-  clientId: process.env.QURAN_FOUNDATION_CLIENT_ID,
-  clientSecret: process.env.QURAN_FOUNDATION_CLIENT_SECRET,
-});
-client.content.v4.verses.byPage(1, { perPage: 1 })
-  .then(v => console.log('OK — verse key:', v[0]?.verseKey))
-  .catch(e => console.error('FAILED:', e.message));
-" 2>&1
+require('dotenv').config();
+const env = require('./dist/config/env.js').env;
+
+(async () => {
+  // 1. Token acquisition
+  const tokenUrl = env.QURAN_FOUNDATION_OAUTH_BASE_URL + '/oauth2/token';
+  const basic = 'Basic ' + Buffer.from(env.QURAN_FOUNDATION_CLIENT_ID + ':' + env.QURAN_FOUNDATION_CLIENT_SECRET).toString('base64');
+  const r = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: basic },
+    body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'content' }),
+  });
+  console.log('Token status:', r.status); // expected: 200
+  const { access_token } = await r.json();
+
+  // 2. Content API with x-auth-token + x-client-id
+  const url = 'https://apis.quran.foundation/content/api/v4/verses/by_page/1?mushaf=1&words=false&fields=image_url&per_page=50';
+  const cr = await fetch(url, {
+    headers: { 'x-auth-token': access_token, 'x-client-id': env.QURAN_FOUNDATION_CLIENT_ID, Accept: 'application/json' },
+  });
+  console.log('Content status:', cr.status); // expected: 200
+  const body = await cr.json();
+  console.log('verse count:', body.verses?.length, '| first verse:', body.verses?.[0]?.verse_key);
+  console.log('image_url:', body.verses?.[0]?.image_url);
+
+  // 3. Invalid credentials fail cleanly
+  const r2 = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: 'Basic ' + Buffer.from('bad-id:bad-secret').toString('base64') },
+    body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'content' }),
+  });
+  console.log('Invalid creds status:', r2.status); // expected: 401
+})();
+"
 ```
 
-Expected: `OK — verse key: 1:1`
-
-If you get a `401` or token error, the credentials or the OAuth2 base URL are wrong.
+Expected output:
+```
+Token status: 200
+Content status: 200
+verse count: 7 | first verse: 1:1
+image_url: //c22506.r6.cf1.rackcdn.com/1_1.png
+Invalid creds status: 401
+```
 
 ---
 
@@ -88,12 +146,8 @@ curl -s "http://localhost:3000/api/quran/pages/lookup?surah=1" \
 
 curl -s "http://localhost:3000/api/quran/pages/lookup?surah=2" \
   -H "Authorization: Bearer $TOKEN" | jq .
-# → multiple pages (SDK returns Chapter.pages — all pages for this surah)
+# → multiple pages (all pages for this surah via /chapters/{n})
 ```
-
-Note: on a cache miss, `lookupBySurahNumber` now returns **all** pages for the surah
-(from the SDK's `Chapter.pages` array), not just the first. This is an improvement
-over the previous raw-HTTP fallback.
 
 **By juz number**
 
@@ -131,7 +185,7 @@ Expected shape:
 }
 ```
 
-`imageUrl` is null until `getPageContent` is called (which populates it from the SDK).
+`imageUrl` is null until `getPageContent` is called (which populates it from the API response).
 
 ---
 
@@ -151,7 +205,7 @@ Expected:
   "id": "<uuid>",
   "pageNumber": 1,
   "mushafId": "qcf_v2",
-  "imageUrl": "https://...",
+  "imageUrl": "//c22506.r6.cf1.rackcdn.com/1_1.png",
   "mappings": [
     {
       "surahNumber": 1,
@@ -166,8 +220,7 @@ Expected:
 }
 ```
 
-`imageUrl` should now be populated (SDK returns it per verse; we take the first).
-No `words` key in the response.
+`imageUrl` is populated from the API response (`fields=image_url`). No `words` key.
 
 **With words**
 
@@ -189,44 +242,43 @@ After the first call to `/api/quran/pages/1/content`:
 
 **Second call — served from cache**
 
-Call `/api/quran/pages/1/content` again. Response is identical. To confirm no SDK
+Call `/api/quran/pages/1/content` again. Response is identical. To confirm no API
 call is made, temporarily set invalid credentials in `.env` and restart — the cached
 response should still return successfully.
 
 ---
 
-## API / SDK Failure Behavior
+## Token Refresh / Retry Behavior
 
-**503 when Quran.Foundation is unreachable**
+`QfTokenManager` caches the token until 60 seconds before expiry. On a `401` from the content API:
+1. `invalidate()` clears the cached token
+2. A fresh token is fetched
+3. The original request is retried exactly once
 
-Set `QURAN_FOUNDATION_CLIENT_ID=invalid` in `.env`, restart, then request an uncached page:
+To observe this manually: the `invalidate()` path is exercised automatically — no manual test needed.
+If both the token refresh and the retry fail, the service throws `AppError(503)`.
+
+---
+
+## Error Behavior
+
+**503 when credentials are invalid (uncached page)**
+
+Set `QURAN_FOUNDATION_PROD_CLIENT_SECRET=invalid` in `.env`, rebuild, then:
 
 ```bash
 curl -s "http://localhost:3000/api/quran/pages/550/content" \
   -H "Authorization: Bearer $TOKEN" | jq .
-# → {"statusCode":503,"message":"Quran content provider error for page 550: ..."}
+# → {"statusCode":503,"message":"QF token request failed: 401"}
 ```
 
-**404 for invalid page**
+**404 for invalid page number**
 
 ```bash
-curl -s "http://localhost:3000/api/quran/pages/605/content" \
+curl -s "http://localhost:3000/api/quran/pages/999999/content" \
   -H "Authorization: Bearer $TOKEN" | jq .
-# → {"statusCode":404,"message":"Quran content not found: page 605"}
+# → {"statusCode":404,"message":"Quran content not found: /verses/by_page/999999"}
 ```
-
----
-
-## Prelive / Staging Environment
-
-If Quran.Foundation provides prelive endpoint URLs, set these in `.env`:
-
-```bash
-QURAN_FOUNDATION_CONTENT_BASE_URL=https://prelive-apis.quran.foundation/content
-QURAN_FOUNDATION_OAUTH_BASE_URL=https://prelive-oauth2.quran.foundation
-```
-
-The SDK will use these URLs instead of the production defaults. Leave blank for production.
 
 ---
 

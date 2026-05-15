@@ -52,22 +52,14 @@ export class QuranContentService {
 
   // SDK client — handles OAuth2 client-credentials token acquisition, caching,
   // and refresh automatically. Only instantiated on the server; never used
-  // from mobile. Credentials live in backend env vars only.
+  // from mobile. Credentials and OAuth2 base URL are resolved in env.ts based
+  // on QURAN_FOUNDATION_ENV (prelive | production).
   private readonly client = createServerClient({
     clientId: env.QURAN_FOUNDATION_CLIENT_ID,
     clientSecret: env.QURAN_FOUNDATION_CLIENT_SECRET,
-    ...(env.QURAN_FOUNDATION_CONTENT_BASE_URL || env.QURAN_FOUNDATION_OAUTH_BASE_URL
-      ? {
-          services: {
-            ...(env.QURAN_FOUNDATION_CONTENT_BASE_URL
-              ? { contentBaseUrl: env.QURAN_FOUNDATION_CONTENT_BASE_URL }
-              : {}),
-            ...(env.QURAN_FOUNDATION_OAUTH_BASE_URL
-              ? { oauth2BaseUrl: env.QURAN_FOUNDATION_OAUTH_BASE_URL }
-              : {}),
-          },
-        }
-      : {}),
+    services: {
+      oauth2BaseUrl: env.QURAN_FOUNDATION_OAUTH_BASE_URL,
+    },
   });
 
   // Returns page metadata (id, imageUrl). Creates a minimal DB row on cache miss.

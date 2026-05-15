@@ -35,6 +35,8 @@ const qfClientSecret =
     ? requireEnv('QURAN_FOUNDATION_PROD_CLIENT_SECRET')
     : requireEnv('QURAN_FOUNDATION_PRELIVE_CLIENT_SECRET');
 
+const QF_CONTENT_API_DEFAULT = 'https://apis.quran.foundation/content/api/v4';
+
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
   PORT: parseInt(process.env.PORT ?? '3000', 10),
@@ -46,7 +48,14 @@ export const env = {
   QURAN_FOUNDATION_ENV: qfEnv,
   QURAN_FOUNDATION_CLIENT_ID: qfClientId,
   QURAN_FOUNDATION_CLIENT_SECRET: qfClientSecret,
-  QURAN_FOUNDATION_OAUTH_BASE_URL: QF_OAUTH_URLS[qfEnv],
+  // OAUTH_BASE_URL: explicit override wins; otherwise derived from QURAN_FOUNDATION_ENV.
+  QURAN_FOUNDATION_OAUTH_BASE_URL:
+    process.env.QURAN_FOUNDATION_OAUTH_BASE_URL || QF_OAUTH_URLS[qfEnv],
+  // CONTENT_BASE_URL: explicit override wins; otherwise default production URL.
+  // Note: prelive OAuth2 tokens are rejected by the production content API.
+  // Leave blank unless Quran.Foundation confirms a compatible prelive content endpoint.
+  QURAN_FOUNDATION_CONTENT_BASE_URL:
+    process.env.QURAN_FOUNDATION_CONTENT_BASE_URL || QF_CONTENT_API_DEFAULT,
   QURAN_FOUNDATION_DEFAULT_MUSHAF_ID: parseInt(
     process.env.QURAN_FOUNDATION_DEFAULT_MUSHAF_ID ?? '1',
     10,

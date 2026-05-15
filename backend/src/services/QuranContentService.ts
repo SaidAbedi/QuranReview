@@ -143,13 +143,13 @@ class QfTokenManager {
 //   x-client-id:  <client_id>
 // On 401 the cached token is invalidated and the request is retried once.
 
-const QF_CONTENT_API_BASE = 'https://apis.quran.foundation/content/api/v4';
-
 class QfApiClient {
   private readonly tokens: QfTokenManager;
+  private readonly contentApiBase: string;
 
-  constructor(tokens: QfTokenManager) {
+  constructor(tokens: QfTokenManager, contentApiBase: string) {
     this.tokens = tokens;
+    this.contentApiBase = contentApiBase;
   }
 
   async get<T>(path: string, query: Record<string, string | number | boolean> = {}): Promise<T> {
@@ -162,7 +162,7 @@ class QfApiClient {
     isRetry: boolean,
   ): Promise<T> {
     const token = await this.tokens.getToken();
-    const url = new URL(`${QF_CONTENT_API_BASE}${path}`);
+    const url = new URL(`${this.contentApiBase}${path}`);
     for (const [k, v] of Object.entries(query)) {
       url.searchParams.set(k, String(v));
     }
@@ -195,6 +195,7 @@ export class QuranContentService {
       env.QURAN_FOUNDATION_CLIENT_ID,
       env.QURAN_FOUNDATION_CLIENT_SECRET,
     ),
+    env.QURAN_FOUNDATION_CONTENT_BASE_URL,
   );
 
   // Returns page metadata (id, imageUrl). Creates a minimal DB row on cache miss.
@@ -441,14 +442,14 @@ export class QuranContentService {
     }, {});
   }
 
-  private serializeVerse(verse: RawVerse): Record<string, unknown> {
+  private serializeVerse = (verse: RawVerse): Record<string, unknown> => {
     return {
       verse_key: verse.verse_key,
       page_number: verse.page_number,
       juz_number: verse.juz_number,
       ...(verse.words ? { words: verse.words.map(this.normalizeWord) } : {}),
     };
-  }
+  };
 
   // Normalizes raw API words (snake_case) and cached words to our stable QfWord shape.
   private normalizeWord = (w: RawWord | Record<string, unknown>): QfWord => {

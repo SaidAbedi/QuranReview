@@ -12,6 +12,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@quranjs/api": "^3.2.0",
     "@supabase/supabase-js": "^2.49.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

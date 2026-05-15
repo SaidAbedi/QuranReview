@@ -19,9 +19,10 @@ export const env = {
 
   QURAN_FOUNDATION_CLIENT_ID: requireEnv('QURAN_FOUNDATION_CLIENT_ID'),
   QURAN_FOUNDATION_CLIENT_SECRET: requireEnv('QURAN_FOUNDATION_CLIENT_SECRET'),
-  QURAN_FOUNDATION_API_BASE:
-    process.env.QURAN_FOUNDATION_API_BASE ??
-    'https://apis.quran.foundation/content/api/v4',
+  // Optional: override SDK base URLs for prelive/staging environments.
+  // If not set the SDK defaults to https://apis.quran.foundation.
+  QURAN_FOUNDATION_CONTENT_BASE_URL: process.env.QURAN_FOUNDATION_CONTENT_BASE_URL,
+  QURAN_FOUNDATION_OAUTH_BASE_URL: process.env.QURAN_FOUNDATION_OAUTH_BASE_URL,
   QURAN_FOUNDATION_DEFAULT_MUSHAF_ID: parseInt(
     process.env.QURAN_FOUNDATION_DEFAULT_MUSHAF_ID ?? '1',
     10,

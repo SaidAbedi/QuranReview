@@ -1,4 +1,6 @@
-import { AppError, AttemptStatus } from '../types';
+import { supabaseAdmin, requirePgPool } from '../db/client';
+import { AppError, AttemptStatus, UserRole } from '../types';
+import { toAttemptRow, AttemptRow } from './SubmissionService';
 
 export interface CreateAttemptInput {
   recordingStorageKey: string;
@@ -8,44 +10,148 @@ export interface CreateAttemptInput {
   sizeBytes?: number;
 }
 
-export interface AttemptRow {
-  id: string;
-  submissionId: string;
-  studentId: string;
-  quranPageId: string;
-  attemptNumber: number;
-  recordingStorageKey: string;
-  recordingDurationMs: number | null;
-  status: AttemptStatus;
-  submittedAt: string;
-  reviewedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export type CompleteReviewPageStatus = 'completed' | 'needs_resubmission';
 
 export class AttemptService {
-  // Calculates next attempt_number (max + 1) inside a transaction.
-  // Retries once on UNIQUE constraint violation from a race.
+  // Verifies ownership, then runs transaction:
+  //   get max(attempt_number) → insert attempt → update current_attempt_id
   async createAttempt(
     submissionId: string,
     studentId: string,
     input: CreateAttemptInput,
   ): Promise<AttemptRow> {
-    throw new AppError(501, 'Not implemented');
+    // Ownership: submission must belong to this student
+    const { data: sub } = await supabaseAdmin
+      .from('submissions')
+      .select('id, quran_page_id, status')
+      .eq('id', submissionId)
+      .eq('student_id', studentId)
+      .maybeSingle();
+
+    if (!sub) throw new AppError(404, 'Submission not found or not yours');
+    if (sub.status === 'completed' || sub.status === 'archived') {
+      throw new AppError(409, `Cannot add attempt to a ${sub.status} submission`);
+    }
+
+    const pool = requirePgPool();
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Lock the submission row to serialize concurrent attempt inserts
+      await client.query('SELECT id FROM submissions WHERE id = $1 FOR UPDATE', [submissionId]);
+
+      const { rows: [maxRow] } = await client.query<{ max: string }>(
+        `SELECT COALESCE(MAX(attempt_number), 0) AS max
+         FROM submission_attempts
+         WHERE submission_id = $1`,
+        [submissionId],
+      );
+      const nextAttemptNumber = parseInt(maxRow.max, 10) + 1;
+
+      const { rows: [attempt] } = await client.query<Record<string, unknown>>(`
+        INSERT INTO submission_attempts (
+          submission_id, student_id, quran_page_id, attempt_number,
+          recording_storage_key, recording_duration_ms, original_file_name,
+          content_type, size_bytes, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'submitted')
+        RETURNING *
+      `, [
+        submissionId,
+        studentId,
+        sub.quran_page_id,
+        nextAttemptNumber,
+        input.recordingStorageKey,
+        input.recordingDurationMs ?? null,
+        input.originalFileName ?? null,
+        input.contentType ?? null,
+        input.sizeBytes ?? null,
+      ]);
+
+      // Update submission: new current attempt, reset status to submitted
+      await client.query(`
+        UPDATE submissions
+        SET current_attempt_id = $1, status = 'submitted', updated_at = now()
+        WHERE id = $2
+      `, [attempt.id, submissionId]);
+
+      await client.query('COMMIT');
+
+      return toAttemptRow(attempt);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err instanceof AppError ? err : new AppError(500, 'Failed to create attempt');
+    } finally {
+      client.release();
+    }
   }
 
-  // Teacher marks an attempt as completed or needs_resubmission.
-  // Also updates submission status, assignment status, student_page_progress,
-  // and recalculates student_progress_snapshots — all in one backend transaction.
-  async completeReview(
+  async getAttemptById(
     submissionId: string,
     attemptId: string,
-    teacherId: string,
-    pageStatus: CompleteReviewPageStatus,
+    userId: string,
+    role: UserRole,
   ): Promise<AttemptRow> {
-    throw new AppError(501, 'Not implemented');
+    const { data: attempt } = await supabaseAdmin
+      .from('submission_attempts')
+      .select('*, submissions!submission_attempts_submission_id_fkey!inner(student_id, assignments!inner(teacher_id))')
+      .eq('id', attemptId)
+      .eq('submission_id', submissionId)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (!attempt) throw new AppError(404, 'Attempt not found');
+
+    const row = attempt as Record<string, unknown>;
+    const sub = row.submissions as Record<string, unknown>;
+    const assignment = sub?.assignments as Record<string, unknown>;
+
+    if (role === 'student' && row.student_id !== userId) throw new AppError(403, 'Access denied');
+    if (role === 'teacher' && assignment?.teacher_id !== userId) throw new AppError(403, 'Access denied');
+
+    return toAttemptRow(row);
+  }
+
+  async getAttemptsBySubmission(
+    submissionId: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<AttemptRow[]> {
+    // Verify access to the submission first
+    const { data: sub } = await supabaseAdmin
+      .from('submissions')
+      .select('id, student_id, assignments!inner(teacher_id)')
+      .eq('id', submissionId)
+      .maybeSingle();
+
+    if (!sub) throw new AppError(404, 'Submission not found');
+
+    const subRow = sub as Record<string, unknown>;
+    const assignment = subRow.assignments as Record<string, unknown>;
+
+    if (role === 'student' && subRow.student_id !== userId) throw new AppError(403, 'Access denied');
+    if (role === 'teacher' && assignment?.teacher_id !== userId) throw new AppError(403, 'Access denied');
+
+    const { data, error } = await supabaseAdmin
+      .from('submission_attempts')
+      .select('*')
+      .eq('submission_id', submissionId)
+      .is('deleted_at', null)
+      .order('attempt_number', { ascending: true });
+
+    if (error) throw new AppError(500, 'Failed to fetch attempts');
+    return (data ?? []).map((r) => toAttemptRow(r as Record<string, unknown>));
+  }
+
+  // Phase 8 — teacher marks attempt reviewed or requests resubmission.
+  async completeReview(
+    _submissionId: string,
+    _attemptId: string,
+    _teacherId: string,
+    _pageStatus: CompleteReviewPageStatus,
+  ): Promise<AttemptRow> {
+    throw new AppError(501, 'Review completion not implemented yet (Phase 8)');
   }
 }
 

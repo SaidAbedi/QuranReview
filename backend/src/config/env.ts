@@ -60,4 +60,8 @@ export const env = {
     process.env.QURAN_FOUNDATION_DEFAULT_MUSHAF_ID ?? '1',
     10,
   ),
+
+  // Direct Postgres connection string — required for transaction operations.
+  // Found in Supabase Dashboard → Settings → Database → Connection string → URI.
+  DATABASE_URL: process.env.DATABASE_URL ?? null,
 } as const;

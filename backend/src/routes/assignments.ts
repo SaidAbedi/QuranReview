@@ -14,7 +14,7 @@ const CreateAssignmentSchema = z.object({
   dueAt: z.string().datetime().optional(),
 });
 
-// POST /api/assignments — teacher creates an assignment for a student
+// POST /api/assignments — teacher creates an assignment for one of their students
 router.post(
   '/assignments',
   authenticate,
@@ -40,7 +40,55 @@ router.get('/student/assignments', authenticate, async (req, res, next) => {
   }
 });
 
-// GET /api/teacher/review-queue — teacher's pending reviews
+// GET /api/teacher/assignments — teacher's assignments list
+router.get(
+  '/teacher/assignments',
+  authenticate,
+  requireTeacherOrAbove,
+  async (req, res, next) => {
+    try {
+      const result = await assignmentService.getTeacherAssignments(req.user!.id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/teacher/assignments/:id — teacher views single assignment
+router.get(
+  '/teacher/assignments/:id',
+  authenticate,
+  requireTeacherOrAbove,
+  async (req, res, next) => {
+    try {
+      const result = await assignmentService.getAssignmentById(
+        req.params.id,
+        req.user!.id,
+        req.user!.role,
+      );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/student/assignments/:id — student views single assignment
+router.get('/student/assignments/:id', authenticate, async (req, res, next) => {
+  try {
+    const result = await assignmentService.getAssignmentById(
+      req.params.id,
+      req.user!.id,
+      req.user!.role,
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/teacher/review-queue — teacher's submissions awaiting review
 router.get(
   '/teacher/review-queue',
   authenticate,

@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../db/client';
 import { env } from '../config/env';
 import { AppError, UserRole } from '../types';
@@ -58,17 +57,29 @@ export class MediaService {
     this.bucketsReady = true;
   }
 
+  // Builds the blueprint-aligned storage key for a student recording attempt.
+  // Key format (§13.1): student-recordings/{studentId}/{submissionId}/attempts/attempt-{N}.m4a
+  // This is the stable DB key — never a signed URL.
+  static buildStudentRecordingKey(
+    studentId: string,
+    submissionId: string,
+    attemptNumber: number,
+  ): string {
+    return `${BUCKET_STUDENT_RECORDINGS}/${studentId}/${submissionId}/attempts/attempt-${attemptNumber}.m4a`;
+  }
+
   // Generates a signed upload URL for a student recording.
-  // Returns the stable storageKey — mobile must store this and pass it to
-  // POST /submissions or POST /submissions/:id/attempts.
+  // Called by SubmissionService/AttemptService after the attempt row is created,
+  // so submissionId and attemptNumber are already known and the key is deterministic.
   //
-  // Key format: student-recordings/{studentId}/{assignmentId}/{uuid}.m4a
-  // The uuid is server-generated so the client cannot inject arbitrary paths.
+  // Also exposed via POST /api/uploads/signed-url as a "refresh" endpoint
+  // when the original upload URL has expired before the mobile client could upload.
   async getSignedUploadUrl(
     userId: string,
     fileType: MediaFileType,
     contentType: string,
-    assignmentId: string,
+    submissionId: string,
+    attemptNumber: number,
   ): Promise<SignedUploadUrlResult> {
     if (fileType !== 'student_recording') {
       throw new AppError(400, 'Only student_recording uploads are supported in Phase 5');
@@ -76,11 +87,11 @@ export class MediaService {
 
     await this.ensureBuckets();
 
-    const storageKey = `${userId}/${assignmentId}/${randomUUID()}.m4a`;
+    const objectPath = `${userId}/${submissionId}/attempts/attempt-${attemptNumber}.m4a`;
 
     const { data, error } = await supabaseAdmin.storage
       .from(BUCKET_STUDENT_RECORDINGS)
-      .createSignedUploadUrl(storageKey);
+      .createSignedUploadUrl(objectPath);
 
     if (error || !data) {
       throw new AppError(503, `Failed to create upload URL: ${error?.message ?? 'unknown'}`);
@@ -90,8 +101,7 @@ export class MediaService {
 
     return {
       uploadUrl: data.signedUrl,
-      // Qualify with bucket prefix so callers always get a fully-resolvable key.
-      storageKey: `${BUCKET_STUDENT_RECORDINGS}/${storageKey}`,
+      storageKey: `${BUCKET_STUDENT_RECORDINGS}/${objectPath}`,
       expiresAt,
     };
   }

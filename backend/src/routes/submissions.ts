@@ -10,7 +10,6 @@ const router = Router();
 
 const CreateSubmissionSchema = z.object({
   assignmentId: z.string().uuid(),
-  recordingStorageKey: z.string().min(1),
   recordingDurationMs: z.number().int().positive().optional(),
   originalFileName: z.string().optional(),
   contentType: z.string().optional(),
@@ -18,7 +17,6 @@ const CreateSubmissionSchema = z.object({
 });
 
 const CreateAttemptSchema = z.object({
-  recordingStorageKey: z.string().min(1),
   recordingDurationMs: z.number().int().positive().optional(),
   originalFileName: z.string().optional(),
   contentType: z.string().optional(),

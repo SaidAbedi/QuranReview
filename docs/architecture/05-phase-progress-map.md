@@ -9,16 +9,15 @@
 | 2 | Express skeleton, middleware, all route stubs | ✅ Complete |
 | 3 | Auth middleware, GET /api/me, PATCH /api/me/profile | ✅ Complete |
 | 4 | QuranContentService, 003_add_constraints.sql | ✅ Complete |
-| 5 | Assignments, Submissions, Attempts | ⬜ Next |
-| 6 | Teacher review flow (mark complete / request resubmission) | ⬜ |
+| 5 | Assignments, Submissions, Attempts, Signed URLs | ✅ Complete |
+| 6 | Teacher review flow (mark complete / request resubmission) | ⬜ Next |
 | 7 | Annotations (freehand + tap-to-word) | ⬜ |
 | 8 | Progress tracking (student_page_progress + snapshots) | ⬜ |
-| 9 | Media — Supabase Storage signed URLs, audio keys | ⬜ |
-| 10 | Notifications (DB-first, push best-effort) | ⬜ |
-| 11 | Admin assignment management | ⬜ |
-| 12 | Mistake feedback (structured mistake_type + options) | ⬜ |
-| 13 | React Native mobile app (Expo Dev Client) | ⬜ |
-| 14 | Polish, E2E testing, launch prep | ⬜ |
+| 9 | Notifications (DB-first, push best-effort) | ⬜ |
+| 10 | Admin assignment management | ⬜ |
+| 11 | Mistake feedback (structured mistake_type + options) | ⬜ |
+| 12 | React Native mobile app (Expo Dev Client) | ⬜ |
+| 13 | Polish, E2E testing, launch prep | ⬜ |
 
 ## Route Implementation Map
 
@@ -32,19 +31,29 @@
 | GET | /api/quran/pages/lookup | 4 | authenticate |
 | GET | /api/quran/pages/:pageNumber | 4 | authenticate |
 | GET | /api/quran/pages/:pageNumber/content | 4 | authenticate |
+| POST | /api/assignments | 5 | authenticate + requireTeacherOrAbove |
+| GET | /api/teacher/assignments | 5 | authenticate + requireTeacherOrAbove |
+| GET | /api/teacher/assignments/:id | 5 | authenticate + requireTeacherOrAbove |
+| GET | /api/student/assignments | 5 | authenticate |
+| GET | /api/student/assignments/:id | 5 | authenticate |
+| GET | /api/teacher/review-queue | 5 | authenticate + requireTeacherOrAbove |
+| POST | /api/uploads/signed-url | 5 | authenticate (refresh only — submit via POST /submissions) |
+| POST | /api/media/signed-read-url | 5 | authenticate |
+| POST | /api/submissions | 5 | authenticate |
+| GET | /api/student/submissions | 5 | authenticate |
+| GET | /api/teacher/submissions | 5 | authenticate + requireTeacherOrAbove |
+| GET | /api/submissions/:id | 5 | authenticate |
+| GET | /api/submissions/:id/attempts | 5 | authenticate |
+| POST | /api/submissions/:id/attempts | 5 | authenticate |
+| GET | /api/submissions/:id/attempts/:aid | 5 | authenticate |
+| GET | /api/submissions/:id/attempts/:aid/recording-url | 5 | authenticate |
+| POST | /api/submissions/:id/attempts/:aid/complete-review | 5 (stub → Phase 8) | authenticate + requireTeacherOrAbove |
 
 ### ⬜ Registered + Stubbed (501 if reached past auth)
 
 | Method | Route | Target Phase | Auth Guard |
 |--------|-------|-------------|-----------|
-| POST | /api/assignments | 5 | authenticate + requireTeacherOrAbove |
-| GET | /api/student/assignments | 5 | authenticate |
-| GET | /api/teacher/review-queue | 5 | authenticate + requireTeacherOrAbove |
-| POST | /api/submissions | 5 | authenticate |
-| GET | /api/submissions/:id | 5 | authenticate |
-| POST | /api/submissions/:id/attempts | 5 | authenticate |
-| POST | /api/attempts/:id/voice-notes | 6 | authenticate + requireTeacherOrAbove |
-| PATCH | /api/attempts/:id/review | 6 | authenticate + requireTeacherOrAbove |
+| POST | /api/attempts/:id/voice-notes | 7 | authenticate + requireTeacherOrAbove |
 | GET | /api/attempts/:id/annotations | 7 | authenticate |
 | GET | /api/attempts/:id/annotation-markers | 7 | authenticate |
 | POST | /api/attempts/:id/annotations/batch | 7 | authenticate + requireTeacherOrAbove |
@@ -53,17 +62,15 @@
 | GET | /api/student/progress | 8 | authenticate |
 | GET | /api/student/progress/surahs/:n | 8 | authenticate |
 | GET | /api/student/progress/juz/:n | 8 | authenticate |
-| POST | /api/uploads/signed-url | 9 | authenticate |
-| POST | /api/media/signed-read-url | 9 | authenticate |
-| GET | /api/notifications | 10 | authenticate |
-| POST | /api/notifications/:id/read | 10 | authenticate |
-| POST | /api/notifications/read-all | 10 | authenticate |
-| POST | /api/devices/register | 10 | authenticate |
-| PATCH | /api/devices/:id/disable | 10 | authenticate |
-| GET | /api/admin/assignment-requests | 11 | authenticate + requireAdmin |
-| PATCH | /api/admin/assignment-requests/:id | 11 | authenticate + requireAdmin |
-| GET | /api/admin/users | 11 | authenticate + requireAdmin |
-| PATCH | /api/admin/users/:id/role | 11 | authenticate + requireSuperAdmin |
+| GET | /api/notifications | 9 | authenticate |
+| POST | /api/notifications/:id/read | 9 | authenticate |
+| POST | /api/notifications/read-all | 9 | authenticate |
+| POST | /api/devices/register | 9 | authenticate |
+| PATCH | /api/devices/:id/disable | 9 | authenticate |
+| GET | /api/admin/assignment-requests | 10 | authenticate + requireAdmin |
+| PATCH | /api/admin/assignment-requests/:id | 10 | authenticate + requireAdmin |
+| GET | /api/admin/users | 10 | authenticate + requireAdmin |
+| PATCH | /api/admin/users/:id/role | 10 | authenticate + requireSuperAdmin |
 
 ## Architecture Decision Log
 
@@ -77,3 +84,6 @@
 | 4 | Lazy cache population for Quran pages | Pages cached as viewed; no pre-population job needed |
 | All | No DB triggers or cron for progress | Recalculated in service code after review completion (blueprint §5A.3) |
 | All | Soft-delete for attempts, annotations, voice notes | Never hard-delete user content |
+| 5 | Storage key generated server-side after attempt row created | Key uses submissionId + attemptNumber (blueprint §13.1); client never supplies it |
+| 5 | Signed upload URL returned from POST /submissions and POST /attempts | Client gets URL from creation response; /uploads/signed-url is a refresh-only endpoint |
+| 5 | Teacher read access gated on teacher_student_relationships | Defense-in-depth; deactivating relationship revokes access to existing submissions |

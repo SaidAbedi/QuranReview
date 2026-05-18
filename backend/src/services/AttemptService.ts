@@ -1,13 +1,20 @@
 import { supabaseAdmin, requirePgPool } from '../db/client';
 import { AppError, AttemptStatus, UserRole } from '../types';
 import { toAttemptRow, AttemptRow } from './SubmissionService';
+import { mediaService, MediaService } from './MediaService';
 
 export interface CreateAttemptInput {
-  recordingStorageKey: string;
   recordingDurationMs?: number;
   originalFileName?: string;
   contentType?: string;
   sizeBytes?: number;
+}
+
+export interface CreateAttemptResult {
+  attempt: AttemptRow;
+  uploadUrl: string;
+  storageKey: string;
+  uploadExpiresAt: string;
 }
 
 export type CompleteReviewPageStatus = 'completed' | 'needs_resubmission';
@@ -19,7 +26,7 @@ export class AttemptService {
     submissionId: string,
     studentId: string,
     input: CreateAttemptInput,
-  ): Promise<AttemptRow> {
+  ): Promise<CreateAttemptResult> {
     // Ownership: submission must belong to this student
     const { data: sub } = await supabaseAdmin
       .from('submissions')
@@ -50,6 +57,13 @@ export class AttemptService {
       );
       const nextAttemptNumber = parseInt(maxRow.max, 10) + 1;
 
+      // Build deterministic key using submissionId + attemptNumber (blueprint §13.1)
+      const storageKey = MediaService.buildStudentRecordingKey(
+        studentId,
+        submissionId,
+        nextAttemptNumber,
+      );
+
       const { rows: [attempt] } = await client.query<Record<string, unknown>>(`
         INSERT INTO submission_attempts (
           submission_id, student_id, quran_page_id, attempt_number,
@@ -62,7 +76,7 @@ export class AttemptService {
         studentId,
         sub.quran_page_id,
         nextAttemptNumber,
-        input.recordingStorageKey,
+        storageKey,
         input.recordingDurationMs ?? null,
         input.originalFileName ?? null,
         input.contentType ?? null,
@@ -78,7 +92,21 @@ export class AttemptService {
 
       await client.query('COMMIT');
 
-      return toAttemptRow(attempt);
+      // Generate signed upload URL after commit
+      const uploadResult = await mediaService.getSignedUploadUrl(
+        studentId,
+        'student_recording',
+        input.contentType ?? 'audio/m4a',
+        submissionId,
+        nextAttemptNumber,
+      );
+
+      return {
+        attempt: toAttemptRow(attempt),
+        uploadUrl: uploadResult.uploadUrl,
+        storageKey: uploadResult.storageKey,
+        uploadExpiresAt: uploadResult.expiresAt,
+      };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err instanceof AppError ? err : new AppError(500, 'Failed to create attempt');

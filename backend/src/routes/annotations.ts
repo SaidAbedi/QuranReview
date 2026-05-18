@@ -17,7 +17,8 @@ const VisualBoundsSchema = z.object({
 });
 
 const AnnotationTypeEnum = z.enum([
-  'freehand', 'circle', 'underline', 'box', 'highlight', 'word_select',
+  'freehand', 'circle', 'underline', 'highlight',
+  'note', 'word_marker', 'ayah_marker',
 ]);
 
 const AnchorTypeEnum = z.enum(['page_region', 'word', 'ayah', 'line']);
@@ -31,7 +32,7 @@ const MistakeTypeEnum = z.enum([
 const CreateAnnotationSchema = z.object({
   annotationType: AnnotationTypeEnum,
   anchorType: AnchorTypeEnum.default('page_region'),
-  points: z.array(PointSchema),
+  points: z.array(PointSchema).optional(),
   style: z.record(z.unknown()).optional(),
   visualBounds: VisualBoundsSchema.optional(),
   verseKey: z.string().optional(),
@@ -64,7 +65,7 @@ const VoiceNoteSchema = z.object({
 });
 
 // GET /api/mistake-categories — returns categories + options (read from DB, not hardcoded)
-router.get('/mistake-categories', authenticate, async (req, res, next) => {
+router.get('/mistake-categories', authenticate, async (_req, res, next) => {
   try {
     const result = await mistakeFeedbackService.getMistakeCategories();
     res.json(result);
@@ -84,6 +85,7 @@ router.get(
         req.params.submissionId,
         req.params.attemptId,
         req.user!.id,
+        req.user!.role,
       );
       res.json(result);
     } catch (err) {
@@ -105,6 +107,7 @@ router.get(
         req.params.attemptId,
         req.user!.id,
         { limit, cursor },
+        req.user!.role,
       );
       res.json(result);
     } catch (err) {
@@ -126,6 +129,7 @@ router.post(
         req.params.attemptId,
         req.user!.id,
         body,
+        req.user!.role,
       );
       res.status(201).json(result);
     } catch (err) {
@@ -147,6 +151,7 @@ router.post(
         req.params.attemptId,
         req.user!.id,
         annotations,
+        req.user!.role,
       );
       res.status(201).json(result);
     } catch (err) {

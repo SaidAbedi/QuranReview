@@ -11,8 +11,8 @@
 | 4 | QuranContentService, 003_add_constraints.sql | ✅ Complete |
 | 5 | Assignments, Submissions, Attempts, Signed URLs | ✅ Complete |
 | 6 | Teacher review flow (mark complete / request resubmission) | ✅ Complete |
-| 7 | Annotations (freehand + tap-to-word) | ⬜ Next |
-| 8 | Progress tracking (student_page_progress + snapshots) | ⬜ |
+| 7 | Annotations (freehand + tap-to-word) | ✅ Complete |
+| 8 | Progress tracking (student_page_progress + snapshots) | ⬜ Next |
 | 9 | Notifications (DB-first, push best-effort) | ⬜ |
 | 10 | Admin assignment management | ⬜ |
 | 11 | Mistake feedback (structured mistake_type + options) | ⬜ |
@@ -48,17 +48,19 @@
 | GET | /api/submissions/:id/attempts/:aid | 5 | authenticate |
 | GET | /api/submissions/:id/attempts/:aid/recording-url | 5 | authenticate |
 | POST | /api/submissions/:id/attempts/:aid/complete-review | 6 | authenticate + requireTeacherOrAbove |
+| GET | /api/mistake-categories | 7 | authenticate |
+| GET | /api/submissions/:id/attempts/:aid/annotation-markers | 7 | authenticate |
+| GET | /api/submissions/:id/attempts/:aid/annotations | 7 | authenticate |
+| POST | /api/submissions/:id/attempts/:aid/annotations | 7 | authenticate + requireTeacherOrAbove |
+| POST | /api/submissions/:id/attempts/:aid/annotations/batch | 7 | authenticate + requireTeacherOrAbove |
+| PATCH | /api/annotations/:id | 7 | authenticate + requireTeacherOrAbove |
+| DELETE | /api/annotations/:id | 7 | authenticate + requireTeacherOrAbove |
+| POST | /api/annotations/:id/voice-note | 7 | authenticate + requireTeacherOrAbove |
 
 ### ⬜ Registered + Stubbed (501 if reached past auth)
 
 | Method | Route | Target Phase | Auth Guard |
 |--------|-------|-------------|-----------|
-| POST | /api/attempts/:id/voice-notes | 7 | authenticate + requireTeacherOrAbove |
-| GET | /api/attempts/:id/annotations | 7 | authenticate |
-| GET | /api/attempts/:id/annotation-markers | 7 | authenticate |
-| POST | /api/attempts/:id/annotations/batch | 7 | authenticate + requireTeacherOrAbove |
-| DELETE | /api/annotations/:id | 7 | authenticate + requireTeacherOrAbove |
-| GET | /api/mistake-categories | 7 | authenticate |
 | GET | /api/student/progress | 8 | authenticate |
 | GET | /api/student/progress/surahs/:n | 8 | authenticate |
 | GET | /api/student/progress/juz/:n | 8 | authenticate |
@@ -91,3 +93,8 @@
 | 6 | assignments.status → 'reviewed' (not 'completed') | Schema constraint; completed state expressed via submission.status = 'completed' |
 | 6 | Review queue only shows 'submitted' assignments | 'reviewed' = teacher acted; student re-submission resets assignment to 'submitted' |
 | 6 | student_page_progress.completed_at preserved on repeat reviews | CASE expression in ON CONFLICT prevents overwriting a completed_at with NULL |
+| 7 | One annotation table for all types | freehand/circle/underline/highlight/note/word_marker/ayah_marker all share quran_annotations; annotation_type discriminates |
+| 7 | points column nullable (migration 004) | word_marker/ayah_marker/note annotations carry Quran refs, not stroke data; points = NULL is valid |
+| 7 | Max 500 points per annotation, 50 per batch | Validated in service layer before insert (blueprint §17) |
+| 7 | /annotation-markers returns no points | Lightweight for timeline UI; full payload only from paginated /annotations |
+| 7 | Cursor pagination on /annotations uses created_at | Stable, append-only workload; no need for keyset on id |

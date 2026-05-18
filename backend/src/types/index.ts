@@ -27,7 +27,9 @@ export type AttemptStatus =
   | 'completed'
   | 'archived';
 
-export type AnnotationType = 'freehand' | 'circle' | 'underline' | 'box' | 'highlight' | 'word_select';
+export type AnnotationType =
+  | 'freehand' | 'circle' | 'underline' | 'highlight'
+  | 'note' | 'word_marker' | 'ayah_marker';
 export type AnchorType = 'page_region' | 'word' | 'ayah' | 'line';
 export type MistakeType =
   | 'tajweed' | 'harakat' | 'wrong_word' | 'wrong_ayah'

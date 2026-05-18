@@ -10,8 +10,8 @@
 | 3 | Auth middleware, GET /api/me, PATCH /api/me/profile | ✅ Complete |
 | 4 | QuranContentService, 003_add_constraints.sql | ✅ Complete |
 | 5 | Assignments, Submissions, Attempts, Signed URLs | ✅ Complete |
-| 6 | Teacher review flow (mark complete / request resubmission) | ⬜ Next |
-| 7 | Annotations (freehand + tap-to-word) | ⬜ |
+| 6 | Teacher review flow (mark complete / request resubmission) | ✅ Complete |
+| 7 | Annotations (freehand + tap-to-word) | ⬜ Next |
 | 8 | Progress tracking (student_page_progress + snapshots) | ⬜ |
 | 9 | Notifications (DB-first, push best-effort) | ⬜ |
 | 10 | Admin assignment management | ⬜ |
@@ -47,7 +47,7 @@
 | POST | /api/submissions/:id/attempts | 5 | authenticate |
 | GET | /api/submissions/:id/attempts/:aid | 5 | authenticate |
 | GET | /api/submissions/:id/attempts/:aid/recording-url | 5 | authenticate |
-| POST | /api/submissions/:id/attempts/:aid/complete-review | 5 (stub → Phase 8) | authenticate + requireTeacherOrAbove |
+| POST | /api/submissions/:id/attempts/:aid/complete-review | 6 | authenticate + requireTeacherOrAbove |
 
 ### ⬜ Registered + Stubbed (501 if reached past auth)
 
@@ -87,3 +87,7 @@
 | 5 | Storage key generated server-side after attempt row created | Key uses submissionId + attemptNumber (blueprint §13.1); client never supplies it |
 | 5 | Signed upload URL returned from POST /submissions and POST /attempts | Client gets URL from creation response; /uploads/signed-url is a refresh-only endpoint |
 | 5 | Teacher read access gated on teacher_student_relationships | Defense-in-depth; deactivating relationship revokes access to existing submissions |
+| 6 | completeReview is a single pg transaction | Atomically updates attempt + submission + assignment + progress + notification |
+| 6 | assignments.status → 'reviewed' (not 'completed') | Schema constraint; completed state expressed via submission.status = 'completed' |
+| 6 | Review queue only shows 'submitted' assignments | 'reviewed' = teacher acted; student re-submission resets assignment to 'submitted' |
+| 6 | student_page_progress.completed_at preserved on repeat reviews | CASE expression in ON CONFLICT prevents overwriting a completed_at with NULL |

@@ -133,13 +133,15 @@ export class AssignmentService {
     return toAssignmentSummary(data);
   }
 
-  // Teacher's pending review queue: assignments that have submissions awaiting review.
+  // Teacher's pending review queue: assignments where the student has submitted
+  // and the teacher has not yet reviewed. 'reviewed' assignments are excluded
+  // because they represent completed or returned-for-practice reviews.
   async getTeacherReviewQueue(teacherId: string): Promise<AssignmentSummary[]> {
     const { data, error } = await supabaseAdmin
       .from('assignments')
       .select(ASSIGNMENT_SELECT)
       .eq('teacher_id', teacherId)
-      .in('status', ['submitted', 'reviewed'])
+      .eq('status', 'submitted')
       .order('updated_at', { ascending: true });
 
     if (error) throw new AppError(500, 'Failed to fetch review queue');

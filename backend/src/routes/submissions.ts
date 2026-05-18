@@ -179,6 +179,7 @@ router.post(
         req.params.submissionId,
         req.params.attemptId,
         req.user!.id,
+        req.user!.role,
         pageStatus,
       );
       res.json(result);

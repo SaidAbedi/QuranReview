@@ -213,7 +213,7 @@ export class SubmissionService {
   }
 }
 
-function toSubmissionRow(row: Record<string, unknown>): SubmissionRow {
+export function toSubmissionRow(row: Record<string, unknown>): SubmissionRow {
   return {
     id: row.id as string,
     assignmentId: row.assignment_id as string,

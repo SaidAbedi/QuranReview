@@ -64,4 +64,13 @@ export const env = {
   // Direct Postgres connection string — required for transaction operations.
   // Found in Supabase Dashboard → Settings → Database → Connection string → URI.
   DATABASE_URL: process.env.DATABASE_URL ?? null,
+
+  // Controls whether the server auto-creates Supabase Storage buckets on startup.
+  // Defaults to true in non-production environments.
+  // In production, set AUTO_CREATE_STORAGE_BUCKETS=true only during initial deploy;
+  // thereafter buckets should exist and this should be left unset (false).
+  AUTO_CREATE_STORAGE_BUCKETS:
+    process.env.AUTO_CREATE_STORAGE_BUCKETS === 'true' ||
+    (process.env.AUTO_CREATE_STORAGE_BUCKETS === undefined &&
+      (process.env.NODE_ENV ?? 'development') !== 'production'),
 } as const;

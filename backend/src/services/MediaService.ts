@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../db/client';
+import { env } from '../config/env';
 import { AppError, UserRole } from '../types';
 
 export type MediaFileType = 'student_recording' | 'teacher_voice_note';
@@ -32,9 +33,20 @@ const AUDIO_MIME_TYPES = [
 export class MediaService {
   private bucketsReady = false;
 
-  // Called at server startup. Idempotent — safe to call multiple times.
+  // Called at server startup. Only auto-creates buckets when
+  // AUTO_CREATE_STORAGE_BUCKETS is enabled (defaults to true outside production).
+  // In production, create buckets manually or via deploy script.
   async ensureBuckets(): Promise<void> {
     if (this.bucketsReady) return;
+
+    if (!env.AUTO_CREATE_STORAGE_BUCKETS) {
+      // Verify buckets exist without creating them.
+      await this.assertBucketExists(BUCKET_STUDENT_RECORDINGS);
+      await this.assertBucketExists(BUCKET_TEACHER_VOICE_NOTES);
+      this.bucketsReady = true;
+      return;
+    }
+
     await this.ensureBucket(BUCKET_STUDENT_RECORDINGS, {
       allowedMimeTypes: AUDIO_MIME_TYPES,
       fileSizeLimit: 52428800, // 50 MB
@@ -85,7 +97,10 @@ export class MediaService {
   }
 
   // Returns a short-lived signed read URL for a stored recording.
-  // Verifies the requesting user is allowed to read this object before signing.
+  // Enforces ownership before signing:
+  //   student  — must own the recording (userId embedded in key path)
+  //   teacher  — must have an active teacher_student_relationships row with the recording owner
+  //   admin/super_admin — unrestricted
   async getSignedReadUrl(
     requestingUserId: string,
     mediaType: MediaFileType,
@@ -97,10 +112,7 @@ export class MediaService {
     }
 
     await this.ensureBuckets();
-
-    // storageKey is expected to be: "student-recordings/{studentId}/..."
-    // Verify the requesting user owns (student) or has access to (teacher/admin) this file.
-    this.verifyReadAccess(storageKey, requestingUserId, role);
+    await this.verifyReadAccess(storageKey, requestingUserId, role);
 
     // Strip the bucket prefix before calling the storage API.
     const objectPath = storageKey.startsWith(`${BUCKET_STUDENT_RECORDINGS}/`)
@@ -119,24 +131,50 @@ export class MediaService {
     return { url: data.signedUrl, expiresAt };
   }
 
-  private verifyReadAccess(storageKey: string, userId: string, role: UserRole): void {
+  private async verifyReadAccess(storageKey: string, userId: string, role: UserRole): Promise<void> {
     // Admins and super_admins can read any recording.
     if (role === 'admin' || role === 'super_admin') return;
 
-    // Students can only read their own recordings.
-    // Key starts with: student-recordings/{ownerId}/...
+    // Extract the recording owner's ID from the key path.
+    // Key format after bucket prefix: {ownerId}/{assignmentId}/{uuid}.m4a
+    const withoutBucket = storageKey.startsWith(`${BUCKET_STUDENT_RECORDINGS}/`)
+      ? storageKey.slice(`${BUCKET_STUDENT_RECORDINGS}/`.length)
+      : storageKey;
+    const ownerId = withoutBucket.split('/')[0];
+
+    if (!ownerId) throw new AppError(400, 'Malformed storage key');
+
     if (role === 'student') {
-      const expectedPrefix = `${BUCKET_STUDENT_RECORDINGS}/${userId}/`;
-      if (!storageKey.startsWith(expectedPrefix)) {
-        throw new AppError(403, 'Access denied: not your recording');
-      }
+      if (ownerId !== userId) throw new AppError(403, 'Access denied: not your recording');
       return;
     }
 
-    // Teachers: Phase 5 allows teachers to read any recording in a submission
-    // assigned to them. Full teacher verification deferred to Phase 6 when the
-    // attempt→assignment lookup is integrated here.
-    // For now teachers can read any student-recording key.
+    if (role === 'teacher') {
+      // Teacher must have an active relationship with the recording owner.
+      const { data } = await supabaseAdmin
+        .from('teacher_student_relationships')
+        .select('id')
+        .eq('teacher_id', userId)
+        .eq('student_id', ownerId)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (!data) throw new AppError(403, 'Access denied: student not assigned to you');
+      return;
+    }
+
+    throw new AppError(403, 'Access denied');
+  }
+
+  private async assertBucketExists(name: string): Promise<void> {
+    const { data, error } = await supabaseAdmin.storage.getBucket(name);
+    if (!data || error) {
+      throw new AppError(
+        500,
+        `Storage bucket "${name}" does not exist. ` +
+        'Create it manually or set AUTO_CREATE_STORAGE_BUCKETS=true for the initial deploy.',
+      );
+    }
   }
 
   private async ensureBucket(

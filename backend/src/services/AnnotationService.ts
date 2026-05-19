@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../db/client';
+import { supabaseAdmin, requirePgPool } from '../db/client';
 import { AppError, AnnotationType, AnchorType, MistakeType, PaginationParams, PaginatedResult, UserRole } from '../types';
 
 export interface AnnotationPointInput {
@@ -74,7 +74,9 @@ const MAX_POINTS_PER_ANNOTATION = 500;
 const MAX_BATCH_SIZE = 50;
 
 export class AnnotationService {
-  // Resolves submission → assignment → checks teacher ownership or student ownership.
+  // Resolves submission → assignment → checks role-appropriate ownership.
+  // Reads: teacher (own assignment), student (own submission), admin (any).
+  // Writes: always called with role='teacher', so must own the assignment.
   private async resolveAccess(
     submissionId: string,
     attemptId: string,
@@ -101,8 +103,8 @@ export class AnnotationService {
     if (userRole === 'teacher' && teacherId !== userId) {
       throw new AppError(403, 'Access denied: not your assignment');
     }
+    // admin/super_admin: no ownership check (read-only paths)
 
-    // Verify the attempt belongs to this submission
     const { data: att } = await supabaseAdmin
       .from('submission_attempts')
       .select('id')
@@ -116,7 +118,7 @@ export class AnnotationService {
     return { studentId, teacherId, quranPageId };
   }
 
-  // Full paths are loaded only on the review screen (paginated).
+  // Full paths loaded only on the review screen (paginated).
   async getAnnotations(
     submissionId: string,
     attemptId: string,
@@ -196,17 +198,16 @@ export class AnnotationService {
     });
   }
 
+  // Write methods are teacher-only — the route uses requireTeacher middleware.
+  // resolveAccess is called with role='teacher', enforcing assignment ownership.
+
   async createAnnotation(
     submissionId: string,
     attemptId: string,
     teacherId: string,
     input: CreateAnnotationInput,
-    userRole: UserRole = 'teacher',
   ): Promise<AnnotationRow> {
-    const { quranPageId } = await this.resolveAccess(
-      submissionId, attemptId, teacherId, userRole,
-    );
-
+    const { quranPageId } = await this.resolveAccess(submissionId, attemptId, teacherId, 'teacher');
     validatePoints(input.points);
 
     const { data, error } = await supabaseAdmin
@@ -227,45 +228,65 @@ export class AnnotationService {
     return toAnnotationRow(data as Record<string, unknown>);
   }
 
-  // Batch save — max 50 per request (blueprint §17).
+  // Batch save — max 50 per request (blueprint §17). Atomic: all succeed or none.
   async batchCreateAnnotations(
     submissionId: string,
     attemptId: string,
     teacherId: string,
     items: CreateAnnotationInput[],
-    userRole: UserRole = 'teacher',
   ): Promise<AnnotationRow[]> {
     if (items.length > MAX_BATCH_SIZE) {
       throw new AppError(400, `Batch size exceeds maximum of ${MAX_BATCH_SIZE}`);
     }
 
-    const { quranPageId } = await this.resolveAccess(
-      submissionId, attemptId, teacherId, userRole,
-    );
-
+    // Validate all items and resolve access before opening the transaction.
+    const { quranPageId } = await this.resolveAccess(submissionId, attemptId, teacherId, 'teacher');
     for (const item of items) {
       validatePoints(item.points);
     }
 
-    const rows = items.map((item) =>
-      buildInsertRow(submissionId, attemptId, teacherId, quranPageId, item),
-    );
+    const pool = requirePgPool();
+    const client = await pool.connect();
+    const results: AnnotationRow[] = [];
 
-    const { data, error } = await supabaseAdmin
-      .from('annotations')
-      .insert(rows)
-      .select(`
-        id, submission_id, submission_attempt_id, teacher_id, quran_page_id,
-        annotation_type, anchor_type,
-        points, visual_bounds, point_count, is_simplified, style,
-        verse_key, word_id, word_position, line_number,
-        mistake_type, mistake_option_id, quick_label,
-        note_text, recording_timestamp_ms,
-        created_at, updated_at
-      `);
+    try {
+      await client.query('BEGIN');
 
-    if (error || !data) throw new AppError(500, 'Failed to batch create annotations');
-    return (data as Record<string, unknown>[]).map(toAnnotationRow);
+      for (const item of items) {
+        const row = buildInsertRow(submissionId, attemptId, teacherId, quranPageId, item);
+        const points = row.points as unknown[] | null;
+
+        const { rows: [ann] } = await client.query<Record<string, unknown>>(`
+          INSERT INTO annotations (
+            submission_id, submission_attempt_id, teacher_id, quran_page_id,
+            annotation_type, anchor_type, points, visual_bounds, point_count,
+            is_simplified, style, verse_key, word_id, word_position, line_number,
+            mistake_type, mistake_option_id, quick_label, note_text, recording_timestamp_ms
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+          RETURNING *
+        `, [
+          row.submission_id, row.submission_attempt_id, row.teacher_id, row.quran_page_id,
+          row.annotation_type, row.anchor_type,
+          points !== null ? JSON.stringify(points) : null,
+          row.visual_bounds !== null ? JSON.stringify(row.visual_bounds) : null,
+          row.point_count, row.is_simplified,
+          JSON.stringify(row.style),
+          row.verse_key, row.word_id, row.word_position, row.line_number,
+          row.mistake_type, row.mistake_option_id, row.quick_label,
+          row.note_text, row.recording_timestamp_ms,
+        ]);
+        results.push(toAnnotationRow(ann));
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err instanceof AppError ? err : new AppError(500, 'Failed to batch create annotations');
+    } finally {
+      client.release();
+    }
+
+    return results;
   }
 
   async updateAnnotation(
@@ -273,7 +294,6 @@ export class AnnotationService {
     teacherId: string,
     input: UpdateAnnotationInput,
   ): Promise<AnnotationRow> {
-    // Verify ownership
     const { data: existing } = await supabaseAdmin
       .from('annotations')
       .select('id, teacher_id')
@@ -360,7 +380,6 @@ export class AnnotationService {
     contentType?: string,
     sizeBytes?: number,
   ): Promise<{ id: string; audioStorageKey: string }> {
-    // Verify annotation exists and teacher owns it
     const { data: annotation } = await supabaseAdmin
       .from('annotations')
       .select('id, teacher_id')
@@ -372,16 +391,6 @@ export class AnnotationService {
     if ((annotation as Record<string, unknown>).teacher_id !== teacherId) {
       throw new AppError(403, 'Access denied: not your annotation');
     }
-
-    // One voice note per annotation: check if one already exists
-    const { data: existing } = await supabaseAdmin
-      .from('annotation_voice_notes')
-      .select('id')
-      .eq('annotation_id', annotationId)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (existing) throw new AppError(409, 'Voice note already exists for this annotation');
 
     const { data, error } = await supabaseAdmin
       .from('annotation_voice_notes')
@@ -396,7 +405,15 @@ export class AnnotationService {
       .select('id, audio_storage_key')
       .single();
 
-    if (error || !data) throw new AppError(500, 'Failed to add voice note');
+    if (error) {
+      // Partial unique index on (annotation_id) WHERE deleted_at IS NULL triggers 23505
+      if ((error as { code?: string }).code === '23505') {
+        throw new AppError(409, 'Voice note already exists for this annotation');
+      }
+      throw new AppError(500, 'Failed to add voice note');
+    }
+    if (!data) throw new AppError(500, 'Failed to add voice note');
+
     const row = data as Record<string, unknown>;
     return { id: row.id as string, audioStorageKey: row.audio_storage_key as string };
   }

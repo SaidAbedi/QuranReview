@@ -98,3 +98,6 @@
 | 7 | Max 500 points per annotation, 50 per batch | Validated in service layer before insert (blueprint §17) |
 | 7 | /annotation-markers returns no points | Lightweight for timeline UI; full payload only from paginated /annotations |
 | 7 | Cursor pagination on /annotations uses created_at | Stable, append-only workload; no need for keyset on id |
+| 7 | Annotation writes restricted to role=teacher only | requireTeacher middleware (not requireTeacherOrAbove); admin moderation needs a separate explicit endpoint |
+| 7 | batchCreateAnnotations uses pg transaction | Teacher annotation sync must be all-or-nothing; partial saves need recovery UX we haven't designed |
+| 7 | DB partial unique index on annotation_voice_notes(annotation_id) WHERE deleted_at IS NULL | Belt-and-suspenders with service check; 23505 → 409 |

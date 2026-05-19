@@ -25,6 +25,12 @@ export function requireTeacherOrAbove(req: Request, res: Response, next: NextFun
   requireRole('teacher', 'admin', 'super_admin')(req, res, next);
 }
 
+// Annotation writes are scoped to the assigned teacher only.
+// Admins read via GET endpoints; use a separate explicit endpoint for admin moderation.
+export function requireTeacher(req: Request, res: Response, next: NextFunction): void {
+  requireRole('teacher')(req, res, next);
+}
+
 export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
   requireRole('super_admin')(req, res, next);
 }

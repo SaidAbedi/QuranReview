@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
-import { requireTeacherOrAbove } from '../middleware/requireRole';
+import { requireTeacher } from '../middleware/requireRole';
 import { annotationService } from '../services/AnnotationService';
 import { mistakeFeedbackService } from '../services/MistakeFeedbackService';
 
@@ -120,7 +120,7 @@ router.get(
 router.post(
   '/submissions/:submissionId/attempts/:attemptId/annotations',
   authenticate,
-  requireTeacherOrAbove,
+  requireTeacher,
   async (req, res, next) => {
     try {
       const body = CreateAnnotationSchema.parse(req.body);
@@ -129,7 +129,6 @@ router.post(
         req.params.attemptId,
         req.user!.id,
         body,
-        req.user!.role,
       );
       res.status(201).json(result);
     } catch (err) {
@@ -142,7 +141,7 @@ router.post(
 router.post(
   '/submissions/:submissionId/attempts/:attemptId/annotations/batch',
   authenticate,
-  requireTeacherOrAbove,
+  requireTeacher,
   async (req, res, next) => {
     try {
       const { annotations } = BatchAnnotationsSchema.parse(req.body);
@@ -151,7 +150,6 @@ router.post(
         req.params.attemptId,
         req.user!.id,
         annotations,
-        req.user!.role,
       );
       res.status(201).json(result);
     } catch (err) {
@@ -164,7 +162,7 @@ router.post(
 router.patch(
   '/annotations/:annotationId',
   authenticate,
-  requireTeacherOrAbove,
+  requireTeacher,
   async (req, res, next) => {
     try {
       const body = UpdateAnnotationSchema.parse(req.body);
@@ -184,7 +182,7 @@ router.patch(
 router.delete(
   '/annotations/:annotationId',
   authenticate,
-  requireTeacherOrAbove,
+  requireTeacher,
   async (req, res, next) => {
     try {
       await annotationService.deleteAnnotation(req.params.annotationId, req.user!.id);
@@ -199,7 +197,7 @@ router.delete(
 router.post(
   '/annotations/:annotationId/voice-note',
   authenticate,
-  requireTeacherOrAbove,
+  requireTeacher,
   async (req, res, next) => {
     try {
       const body = VoiceNoteSchema.parse(req.body);

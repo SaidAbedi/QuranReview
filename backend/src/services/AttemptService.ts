@@ -2,6 +2,7 @@ import { supabaseAdmin, requirePgPool } from '../db/client';
 import { AppError, AttemptStatus, NotificationType, UserRole } from '../types';
 import { toAttemptRow, AttemptRow, toSubmissionRow, SubmissionRow } from './SubmissionService';
 import { mediaService, MediaService } from './MediaService';
+import { progressService } from './ProgressService';
 
 export interface CreateAttemptInput {
   recordingDurationMs?: number;
@@ -358,6 +359,11 @@ export class AttemptService {
     } finally {
       client.release();
     }
+
+    // Recalculate snapshot outside the transaction — failure is non-critical.
+    progressService.recalculateSnapshot(studentId).catch((snapErr) => {
+      console.error('[AttemptService] Snapshot recalculation failed:', snapErr);
+    });
 
     return {
       attempt: toAttemptRow(updatedAttempt!),

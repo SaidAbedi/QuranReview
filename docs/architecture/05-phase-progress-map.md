@@ -12,8 +12,8 @@
 | 5 | Assignments, Submissions, Attempts, Signed URLs | ✅ Complete |
 | 6 | Teacher review flow (mark complete / request resubmission) | ✅ Complete |
 | 7 | Annotations (freehand + tap-to-word) | ✅ Complete |
-| 8 | Progress tracking (student_page_progress + snapshots) | ⬜ Next |
-| 9 | Notifications (DB-first, push best-effort) | ⬜ |
+| 8 | Progress tracking (student_page_progress + snapshots) | ✅ Complete |
+| 9 | Notifications (DB-first, push best-effort) | ⬜ Next |
 | 10 | Admin assignment management | ⬜ |
 | 11 | Mistake feedback (structured mistake_type + options) | ⬜ |
 | 12 | React Native mobile app (Expo Dev Client) | ⬜ |
@@ -56,14 +56,20 @@
 | PATCH | /api/annotations/:id | 7 | authenticate + requireTeacherOrAbove |
 | DELETE | /api/annotations/:id | 7 | authenticate + requireTeacherOrAbove |
 | POST | /api/annotations/:id/voice-note | 7 | authenticate + requireTeacherOrAbove |
+| GET | /api/student/progress | 8 | authenticate |
+| GET | /api/student/progress/surahs/:n | 8 | authenticate |
+| GET | /api/student/progress/juz/:n | 8 | authenticate |
+| GET | /api/teacher/students/:id/progress | 8 | authenticate + requireTeacherOrAbove |
+| GET | /api/teacher/students/:id/progress/surahs/:n | 8 | authenticate + requireTeacherOrAbove |
+| GET | /api/teacher/students/:id/progress/juz/:n | 8 | authenticate + requireTeacherOrAbove |
+| GET | /api/admin/students/:id/progress | 8 | authenticate + requireAdmin |
+| GET | /api/admin/students/:id/progress/surahs/:n | 8 | authenticate + requireAdmin |
+| GET | /api/admin/students/:id/progress/juz/:n | 8 | authenticate + requireAdmin |
 
 ### ⬜ Registered + Stubbed (501 if reached past auth)
 
 | Method | Route | Target Phase | Auth Guard |
 |--------|-------|-------------|-----------|
-| GET | /api/student/progress | 8 | authenticate |
-| GET | /api/student/progress/surahs/:n | 8 | authenticate |
-| GET | /api/student/progress/juz/:n | 8 | authenticate |
 | GET | /api/notifications | 9 | authenticate |
 | POST | /api/notifications/:id/read | 9 | authenticate |
 | POST | /api/notifications/read-all | 9 | authenticate |
@@ -101,3 +107,8 @@
 | 7 | Annotation writes restricted to role=teacher only | requireTeacher middleware (not requireTeacherOrAbove); admin moderation needs a separate explicit endpoint |
 | 7 | batchCreateAnnotations uses pg transaction | Teacher annotation sync must be all-or-nothing; partial saves need recovery UX we haven't designed |
 | 7 | DB partial unique index on annotation_voice_notes(annotation_id) WHERE deleted_at IS NULL | Belt-and-suspenders with service check; 23505 → 409 |
+| 8 | Live aggregation for getStudentProgress summary; snapshot as cached accelerator | student_page_progress rows ≤604 per student — live count is O(assigned pages), acceptable for MVP |
+| 8 | recalculateSnapshot called async after completeReview COMMIT | Snapshot failure must not block the review API response; non-critical read model |
+| 8 | surahBreakdown/juzBreakdown in summary uses snapshot JSONB | Avoids a join query on every dashboard load; surah/juz totals grow as quran_page_mappings is populated |
+| 8 | getSurahProgress/getJuzProgress always live (pg JOIN) | Snapshot has no page-level detail; live query needed for page list |
+| 8 | pagesCompleted counts current status='completed', not completed_at IS NOT NULL | Current state of learning; teacher re-review can change it. completed_at preserved for historical audit |

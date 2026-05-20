@@ -159,6 +159,35 @@ src/
 - Never hard-delete student recordings or teacher annotations in normal user flows.
 - Role-based access checks on **every** backend endpoint.
 
+### Three credentials that must never reach the mobile app or be committed to the repo
+
+| Credential | Where it lives | What it allows |
+|---|---|---|
+| `DATABASE_URL` | `backend/.env` only | Direct Postgres access as superuser — bypasses RLS |
+| `SUPABASE_SERVICE_ROLE_KEY` | `backend/.env` only | Bypasses RLS on all tables; full storage access; admin auth |
+| `QURAN_FOUNDATION_CLIENT_SECRET` | `backend/.env` only | Quran.Foundation API access — proxied to mobile via backend |
+
+### RLS architecture (migration 006)
+
+All 23 public application tables have RLS enabled with **zero policies**. This means:
+
+- **`anon` / `authenticated` roles**: all direct table access is denied (empty result set from PostgREST). This is intentional — the mobile app must never query Supabase tables directly.
+- **`service_role`** (used by `supabaseAdmin`): bypasses RLS entirely — all backend operations work unchanged.
+- **`postgres` superuser** (used by the `pg` Pool for transactions): bypasses RLS entirely.
+- **Auth trigger** (`handle_new_auth_user`): `SECURITY DEFINER` — runs as its definer (postgres), bypasses RLS.
+- **Storage buckets** (`student-recordings`, `teacher-voice-notes`): `public = false`. All client access is via backend-generated signed URLs; Supabase verifies signed URL JWTs at the storage API layer independent of RLS.
+
+### Mobile app cannot query Supabase directly — by design
+
+The mobile app only uses Supabase for:
+- **Auth** (`supabase.auth.signInWithPassword`, `supabase.auth.signOut`, token refresh) — this goes to Supabase Auth, not to any application table.
+
+Everything else (assignments, submissions, progress, annotations, Quran content) goes through the Express backend API. The backend validates the Supabase JWT, enforces business-layer access control, and uses the service role for DB operations.
+
+### Production note: pg Pool database role
+
+The `pg` Pool currently connects via `DATABASE_URL` as the postgres superuser. This is fine for development. For production, consider creating a limited `app_service` role with explicit grants on only the tables and operations the backend needs — and no superuser privilege. The RLS-bypass behaviour would remain (service roles bypass RLS regardless of whether they are superuser), but the blast radius of a connection-string leak would be smaller.
+
 ## When in Doubt
 
 The blueprint is the source of truth. If an implementation detail conflicts with the blueprint, stop and ask. Do not invent large new architecture patterns without explaining the tradeoff and getting user approval.

@@ -88,7 +88,7 @@
 | 1 | Supabase trigger for user row creation | Guarantees public.users exists before any API call |
 | 3 | No check-before-insert for assignment requests | Race-safe: partial unique index + 23505 handling |
 | 4 | Basic auth placeholder for Quran.Foundation | Auth mechanism (OAuth2/API key/Basic) TBD from docs |
-| 4 | ws package for Supabase on Node 18 | No native WebSocket in Node 18; realtime not used server-side |
+| 4 | Node 22 required; ws package removed | Node 22 ships native WebSocket; ws workaround no longer needed. engines.node >=22, backend/.nvmrc=22 |
 | 4 | Lazy cache population for Quran pages | Pages cached as viewed; no pre-population job needed |
 | All | No DB triggers or cron for progress | Recalculated in service code after review completion (blueprint §5A.3) |
 | All | Soft-delete for attempts, annotations, voice notes | Never hard-delete user content |

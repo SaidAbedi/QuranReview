@@ -5,9 +5,10 @@ import { notificationService } from '../services/NotificationService';
 
 const router = Router();
 
-const PaginationSchema = z.object({
+const ListNotificationsSchema = z.object({
   limit: z.string().transform(Number).pipe(z.number().int().min(1).max(100)).default('50'),
   cursor: z.string().optional(),
+  unreadOnly: z.string().transform((v) => v === 'true').optional(),
 });
 
 const RegisterDeviceSchema = z.object({
@@ -19,12 +20,24 @@ const RegisterDeviceSchema = z.object({
 // GET /api/notifications
 router.get('/notifications', authenticate, async (req, res, next) => {
   try {
-    const { limit, cursor } = PaginationSchema.parse(req.query);
+    const { limit, cursor, unreadOnly } = ListNotificationsSchema.parse(req.query);
     const result = await notificationService.getNotifications(req.user!.id, {
       limit,
       cursor,
+      unreadOnly: unreadOnly ?? false,
     });
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/notifications/read-all — must come before /:notificationId/read
+// so Express does not treat "read-all" as a notificationId param.
+router.post('/notifications/read-all', authenticate, async (req, res, next) => {
+  try {
+    await notificationService.markAllRead(req.user!.id);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }
@@ -40,17 +53,8 @@ router.post('/notifications/:notificationId/read', authenticate, async (req, res
   }
 });
 
-// POST /api/notifications/read-all
-router.post('/notifications/read-all', authenticate, async (req, res, next) => {
-  try {
-    await notificationService.markAllRead(req.user!.id);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
-
-// POST /api/devices/register — registers or refreshes a mobile push token
+// POST /api/devices/register
+// Upserts on (provider, token) — reactivates if token already exists.
 router.post('/devices/register', authenticate, async (req, res, next) => {
   try {
     const body = RegisterDeviceSchema.parse(req.body);
@@ -60,7 +64,7 @@ router.post('/devices/register', authenticate, async (req, res, next) => {
       body.platform,
       body.deviceId,
     );
-    res.status(201).json(result);
+    res.json(result);
   } catch (err) {
     next(err);
   }

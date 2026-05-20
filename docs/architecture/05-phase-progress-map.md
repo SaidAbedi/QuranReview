@@ -13,7 +13,7 @@
 | 6 | Teacher review flow (mark complete / request resubmission) | ✅ Complete |
 | 7 | Annotations (freehand + tap-to-word) | ✅ Complete |
 | 8 | Progress tracking (student_page_progress + snapshots) | ✅ Complete |
-| 9 | Notifications (DB-first, push best-effort) | ⬜ Next |
+| 9 | Notifications (DB-first, push best-effort) | ✅ Complete |
 | 10 | Admin assignment management | ⬜ |
 | 11 | Mistake feedback (structured mistake_type + options) | ⬜ |
 | 12 | React Native mobile app (Expo Dev Client) | ⬜ |
@@ -65,16 +65,16 @@
 | GET | /api/admin/students/:id/progress | 8 | authenticate + requireAdmin |
 | GET | /api/admin/students/:id/progress/surahs/:n | 8 | authenticate + requireAdmin |
 | GET | /api/admin/students/:id/progress/juz/:n | 8 | authenticate + requireAdmin |
+| GET | /api/notifications | 9 | authenticate |
+| POST | /api/notifications/read-all | 9 | authenticate |
+| POST | /api/notifications/:id/read | 9 | authenticate (own only) |
+| POST | /api/devices/register | 9 | authenticate |
+| PATCH | /api/devices/:id/disable | 9 | authenticate (own only) |
 
 ### ⬜ Registered + Stubbed (501 if reached past auth)
 
 | Method | Route | Target Phase | Auth Guard |
 |--------|-------|-------------|-----------|
-| GET | /api/notifications | 9 | authenticate |
-| POST | /api/notifications/:id/read | 9 | authenticate |
-| POST | /api/notifications/read-all | 9 | authenticate |
-| POST | /api/devices/register | 9 | authenticate |
-| PATCH | /api/devices/:id/disable | 9 | authenticate |
 | GET | /api/admin/assignment-requests | 10 | authenticate + requireAdmin |
 | PATCH | /api/admin/assignment-requests/:id | 10 | authenticate + requireAdmin |
 | GET | /api/admin/users | 10 | authenticate + requireAdmin |
@@ -112,5 +112,9 @@
 | 8 | surahBreakdown/juzBreakdown in summary uses snapshot JSONB | Avoids a join query on every dashboard load; surah/juz totals grow as quran_page_mappings is populated |
 | 8 | getSurahProgress/getJuzProgress always live (pg JOIN) | Snapshot has no page-level detail; live query needed for page list |
 | 8 | pagesCompleted counts current status='completed', not completed_at IS NOT NULL | Current state of learning; teacher re-review can change it. completed_at preserved for historical audit |
+| 9 | notifications table is source of truth; push deferred | DB row written first (atomically in completeReview tx); push delivery is a future best-effort layer in Phase 12 |
+| 9 | read-all route declared before /:id/read | Express matches routes in declaration order; "read-all" would be treated as a notificationId param otherwise |
+| 9 | device upsert on (provider, token), reassigns user_id on conflict | Token is the device identity; if re-registered by a new user (device transfer), it belongs to the new user |
+| 9 | createNotification internal helper uses supabaseAdmin, not pg | Notifications created outside a transaction use the helper; inside a transaction (completeReview) use direct pg INSERT for atomicity |
 | 8 | quran_page_mappings populated at assignment creation (fire-and-forget) | getPageContent(pageNumber, false) called when assignment is created; ensures surah/juz snapshot is non-empty from first review. If QF prefetch fails: assignment creation still succeeds; mapping populates on next GET /api/quran/pages/:n/content call; until then surahBreakdown/juzBreakdown are empty for that page |
 | pre-9 | RLS enabled on all 23 application tables (migration 006) | No policies added — RLS + zero policies = deny all for anon/authenticated. Service role (supabaseAdmin) and postgres superuser (pg Pool) bypass RLS. Auth trigger is SECURITY DEFINER (bypasses RLS). Storage buckets set to private; signed URLs verified at storage API layer, independent of RLS |

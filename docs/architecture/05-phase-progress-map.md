@@ -112,3 +112,4 @@
 | 8 | surahBreakdown/juzBreakdown in summary uses snapshot JSONB | Avoids a join query on every dashboard load; surah/juz totals grow as quran_page_mappings is populated |
 | 8 | getSurahProgress/getJuzProgress always live (pg JOIN) | Snapshot has no page-level detail; live query needed for page list |
 | 8 | pagesCompleted counts current status='completed', not completed_at IS NOT NULL | Current state of learning; teacher re-review can change it. completed_at preserved for historical audit |
+| 8 | quran_page_mappings populated at assignment creation (fire-and-forget) | getPageContent(pageNumber, false) called when assignment is created; ensures surah/juz snapshot is non-empty from first review. Non-blocking: failure is logged but never surfaces to caller |

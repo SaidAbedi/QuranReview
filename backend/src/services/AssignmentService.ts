@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../db/client';
 import { AppError, UserRole } from '../types';
+import { quranContentService } from './QuranContentService';
 
 export interface CreateAssignmentInput {
   studentId: string;
@@ -54,7 +55,7 @@ export class AssignmentService {
 
     const { data: page } = await supabaseAdmin
       .from('quran_pages')
-      .select('id')
+      .select('id, page_number')
       .eq('id', input.quranPageId)
       .maybeSingle();
 
@@ -82,6 +83,13 @@ export class AssignmentService {
       .update({ onboarding_status: 'active', updated_at: new Date().toISOString() })
       .eq('user_id', input.studentId)
       .eq('onboarding_status', 'pending_assignment');
+
+    // Ensure quran_page_mappings is populated for this page so that surah/juz
+    // progress breakdowns work as soon as the first assignment is created.
+    const pageNumber = (page as Record<string, unknown>).page_number as number;
+    quranContentService.getPageContent(pageNumber, false).catch((err) => {
+      console.error('[AssignmentService] Failed to populate quran_page_mappings for page', pageNumber, err);
+    });
 
     return toAssignmentSummary(data);
   }

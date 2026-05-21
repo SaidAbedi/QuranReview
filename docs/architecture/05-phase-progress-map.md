@@ -15,7 +15,7 @@
 | 8 | Progress tracking (student_page_progress + snapshots) | ✅ Complete |
 | 9 | Notifications (DB-first, push best-effort) | ✅ Complete |
 | 10 | Admin assignment management | ✅ Complete |
-| 11 | Mistake feedback (structured mistake_type + options) | ⬜ |
+| 11 | Mistake feedback (structured mistake_type + options) | ✅ Complete |
 | 12 | React Native mobile app (Expo Dev Client) | ⬜ |
 | 13 | Polish, E2E testing, launch prep | ⬜ |
 
@@ -126,3 +126,9 @@
 | 10 | Notifications fire after COMMIT, not inside transaction | Non-critical; notification failure must not roll back the assignment. Fire-and-forget .catch() logs but does not surface to caller |
 | 10 | updateTeacherStudentRelationship accepts _updatedBy but cannot store it | teacher_student_relationships has no updated_by column; param accepted for API compatibility, prefixed _ to suppress unused-var warning |
 | 10 | Relationship status CHECK: active, inactive, pending only | 'paused', 'ended', 'archived' require a schema migration before use; zod schema enforces the same constraint at the API layer |
+| 10 | assignTeacher request-state guards moved inside transaction | All status checks now happen after the FOR UPDATE lock — no pre-flight/lock race window; missing row → 404, not 500 |
+| 10 | Relationship status notifications fire-and-forget | inactive → relationship_deactivated to student; active → relationship_reactivated to student; no notification for pending |
+| 10 | migration 007 extends notifications.type CHECK | Added relationship_deactivated and relationship_reactivated; ALTER TABLE DROP + ADD CONSTRAINT is the only way to change a pg CHECK |
+| 11 | annotations.mistake_option_id validated before write | mistakeFeedbackService.validateAndGetOptionDetail checks option exists, is active, and category code matches mistakeType; throws 422 |
+| 11 | Annotation responses include mistakeOptionDetail (enriched) | Supabase nested join mistake_options!mistake_option_id → mistake_categories!category_id for Supabase queries; post-transaction batch lookup for pg batchCreateAnnotations |
+| 11 | GET /mistake-categories unchanged (already complete) | Categories + options always read from DB; seeded in 002_seed_data.sql; labels editable without code deploy |

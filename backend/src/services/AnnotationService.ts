@@ -1,5 +1,6 @@
 import { supabaseAdmin, requirePgPool } from '../db/client';
 import { AppError, AnnotationType, AnchorType, MistakeType, PaginationParams, PaginatedResult, UserRole } from '../types';
+import { mistakeFeedbackService, MistakeOptionDetail } from './MistakeFeedbackService';
 
 export interface AnnotationPointInput {
   x: number;
@@ -51,6 +52,7 @@ export interface AnnotationRow {
   lineNumber: number | null;
   mistakeType: MistakeType | null;
   mistakeOptionId: string | null;
+  mistakeOptionDetail: MistakeOptionDetail | null;
   quickLabel: string | null;
   noteText: string | null;
   recordingTimestampMs: number | null;
@@ -58,6 +60,8 @@ export interface AnnotationRow {
   createdAt: string;
   updatedAt: string;
 }
+
+export { MistakeOptionDetail };
 
 // Lightweight shape returned by the /annotation-markers endpoint.
 // Used for audio playback timeline only — no path data included.
@@ -138,7 +142,11 @@ export class AnnotationService {
         mistake_type, mistake_option_id, quick_label,
         note_text, recording_timestamp_ms,
         created_at, updated_at,
-        annotation_voice_notes(id)
+        annotation_voice_notes(id),
+        mistake_options!mistake_option_id(
+          id, code, label, category_id,
+          mistake_categories!category_id(id, code, label)
+        )
       `)
       .eq('submission_attempt_id', attemptId)
       .is('deleted_at', null)
@@ -210,6 +218,13 @@ export class AnnotationService {
     const { quranPageId } = await this.resolveAccess(submissionId, attemptId, teacherId, 'teacher');
     validatePoints(input.points);
 
+    if (input.mistakeOptionId) {
+      await mistakeFeedbackService.validateAndGetOptionDetail(
+        input.mistakeOptionId,
+        input.mistakeType,
+      );
+    }
+
     const { data, error } = await supabaseAdmin
       .from('annotations')
       .insert(buildInsertRow(submissionId, attemptId, teacherId, quranPageId, input))
@@ -220,7 +235,11 @@ export class AnnotationService {
         verse_key, word_id, word_position, line_number,
         mistake_type, mistake_option_id, quick_label,
         note_text, recording_timestamp_ms,
-        created_at, updated_at
+        created_at, updated_at,
+        mistake_options!mistake_option_id(
+          id, code, label, category_id,
+          mistake_categories!category_id(id, code, label)
+        )
       `)
       .single();
 
@@ -243,6 +262,27 @@ export class AnnotationService {
     const { quranPageId } = await this.resolveAccess(submissionId, attemptId, teacherId, 'teacher');
     for (const item of items) {
       validatePoints(item.points);
+    }
+
+    // Batch-validate all mistakeOptionIds in a single query before the transaction.
+    const optionIds = [...new Set(
+      items.map(i => i.mistakeOptionId).filter((id): id is string => id != null),
+    )];
+    if (optionIds.length > 0) {
+      const detailMap = await mistakeFeedbackService.getMistakeOptionDetails(optionIds);
+      for (const item of items) {
+        if (!item.mistakeOptionId) continue;
+        const detail = detailMap.get(item.mistakeOptionId);
+        if (!detail) {
+          throw new AppError(422, `Mistake option "${item.mistakeOptionId}" not found or inactive`);
+        }
+        if (item.mistakeType && detail.categoryCode !== item.mistakeType) {
+          throw new AppError(
+            422,
+            `Mistake option "${detail.code}" belongs to category "${detail.categoryCode}", not "${item.mistakeType}"`,
+          );
+        }
+      }
     }
 
     const pool = requirePgPool();
@@ -286,6 +326,17 @@ export class AnnotationService {
       client.release();
     }
 
+    // Post-enrich with mistakeOptionDetail — RETURNING * has no joins.
+    if (optionIds.length > 0) {
+      const detailMap = await mistakeFeedbackService.getMistakeOptionDetails(
+        results.map(r => r.mistakeOptionId).filter((id): id is string => id !== null),
+      );
+      return results.map(r => ({
+        ...r,
+        mistakeOptionDetail: r.mistakeOptionId ? (detailMap.get(r.mistakeOptionId) ?? null) : null,
+      }));
+    }
+
     return results;
   }
 
@@ -296,7 +347,7 @@ export class AnnotationService {
   ): Promise<AnnotationRow> {
     const { data: existing } = await supabaseAdmin
       .from('annotations')
-      .select('id, teacher_id')
+      .select('id, teacher_id, mistake_type')
       .eq('id', annotationId)
       .is('deleted_at', null)
       .maybeSingle();
@@ -308,6 +359,15 @@ export class AnnotationService {
 
     if (input.points !== undefined) {
       validatePoints(input.points);
+    }
+
+    if (input.mistakeOptionId !== undefined && input.mistakeOptionId !== null) {
+      const existingMistakeType = input.mistakeType
+        ?? ((existing as Record<string, unknown>).mistake_type as string | undefined);
+      await mistakeFeedbackService.validateAndGetOptionDetail(
+        input.mistakeOptionId,
+        existingMistakeType,
+      );
     }
 
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -342,7 +402,11 @@ export class AnnotationService {
         verse_key, word_id, word_position, line_number,
         mistake_type, mistake_option_id, quick_label,
         note_text, recording_timestamp_ms,
-        created_at, updated_at
+        created_at, updated_at,
+        mistake_options!mistake_option_id(
+          id, code, label, category_id,
+          mistake_categories!category_id(id, code, label)
+        )
       `)
       .single();
 
@@ -464,6 +528,9 @@ function buildInsertRow(
 
 function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {
   const voiceNotes = row.annotation_voice_notes as unknown[] | undefined;
+  const optData = row.mistake_options as Record<string, unknown> | null | undefined;
+  const catData = optData?.mistake_categories as Record<string, unknown> | null | undefined;
+
   return {
     id: row.id as string,
     submissionId: row.submission_id as string,
@@ -483,6 +550,14 @@ function toAnnotationRow(row: Record<string, unknown>): AnnotationRow {
     lineNumber: (row.line_number as number | null) ?? null,
     mistakeType: (row.mistake_type as MistakeType | null) ?? null,
     mistakeOptionId: (row.mistake_option_id as string | null) ?? null,
+    mistakeOptionDetail: optData ? {
+      id: optData.id as string,
+      code: optData.code as string,
+      label: optData.label as string,
+      categoryId: optData.category_id as string,
+      categoryCode: (catData?.code as string) ?? '',
+      categoryLabel: (catData?.label as string) ?? '',
+    } : null,
     quickLabel: (row.quick_label as string | null) ?? null,
     noteText: (row.note_text as string | null) ?? null,
     recordingTimestampMs: (row.recording_timestamp_ms as number | null) ?? null,

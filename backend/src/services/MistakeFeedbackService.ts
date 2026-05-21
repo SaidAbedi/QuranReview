@@ -19,6 +19,16 @@ export interface MistakeOptionRow {
   sortOrder: number;
 }
 
+// Enriched option detail embedded in annotation responses.
+export interface MistakeOptionDetail {
+  id: string;
+  code: string;
+  label: string;
+  categoryId: string;
+  categoryCode: string;
+  categoryLabel: string;
+}
+
 // Reads mistake categories and options from the database.
 // Categories/options are never hardcoded in app code — always read from DB
 // so labels can be updated without a code deploy.
@@ -71,6 +81,57 @@ export class MistakeFeedbackService {
         options: optionsByCategory.get(id) ?? [],
       };
     });
+  }
+
+  // Fetches enriched option details for a set of option IDs.
+  // Used by AnnotationService to embed option+category labels in annotation responses.
+  async getMistakeOptionDetails(ids: string[]): Promise<Map<string, MistakeOptionDetail>> {
+    if (ids.length === 0) return new Map();
+
+    const { data, error } = await supabaseAdmin
+      .from('mistake_options')
+      .select('id, code, label, category_id, mistake_categories!category_id(id, code, label)')
+      .in('id', ids)
+      .eq('is_active', true);
+
+    if (error || !data) return new Map();
+
+    const map = new Map<string, MistakeOptionDetail>();
+    for (const d of data) {
+      const row = d as Record<string, unknown>;
+      const cat = row.mistake_categories as Record<string, unknown> | null;
+      map.set(row.id as string, {
+        id: row.id as string,
+        code: row.code as string,
+        label: row.label as string,
+        categoryId: row.category_id as string,
+        categoryCode: (cat?.code as string) ?? '',
+        categoryLabel: (cat?.label as string) ?? '',
+      });
+    }
+    return map;
+  }
+
+  // Validates that the given option ID exists, is active, and (when mistakeType is
+  // provided) belongs to the category whose code matches mistakeType.
+  // Returns the enriched detail on success; throws AppError on failure.
+  async validateAndGetOptionDetail(
+    mistakeOptionId: string,
+    mistakeType?: string,
+  ): Promise<MistakeOptionDetail> {
+    const map = await this.getMistakeOptionDetails([mistakeOptionId]);
+    const detail = map.get(mistakeOptionId);
+
+    if (!detail) throw new AppError(422, 'Mistake option not found or inactive');
+
+    if (mistakeType && detail.categoryCode !== mistakeType) {
+      throw new AppError(
+        422,
+        `Mistake option "${detail.code}" belongs to category "${detail.categoryCode}", not "${mistakeType}"`,
+      );
+    }
+
+    return detail;
   }
 }
 

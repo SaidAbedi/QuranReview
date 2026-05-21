@@ -14,7 +14,7 @@
 | 7 | Annotations (freehand + tap-to-word) | ✅ Complete |
 | 8 | Progress tracking (student_page_progress + snapshots) | ✅ Complete |
 | 9 | Notifications (DB-first, push best-effort) | ✅ Complete |
-| 10 | Admin assignment management | ⬜ |
+| 10 | Admin assignment management | ✅ Complete |
 | 11 | Mistake feedback (structured mistake_type + options) | ⬜ |
 | 12 | React Native mobile app (Expo Dev Client) | ⬜ |
 | 13 | Polish, E2E testing, launch prep | ⬜ |
@@ -71,12 +71,15 @@
 | POST | /api/devices/register | 9 | authenticate |
 | PATCH | /api/devices/:id/disable | 9 | authenticate (own only) |
 
+| GET | /api/admin/students/unassigned | 10 | authenticate + requireAdmin |
+| GET | /api/admin/assignment-requests | 10 | authenticate + requireAdmin |
+| POST | /api/admin/assignment-requests/:id/assign-teacher | 10 | authenticate + requireAdmin |
+| PATCH | /api/admin/teacher-student-relationships/:id | 10 | authenticate + requireAdmin |
+
 ### ⬜ Registered + Stubbed (501 if reached past auth)
 
 | Method | Route | Target Phase | Auth Guard |
 |--------|-------|-------------|-----------|
-| GET | /api/admin/assignment-requests | 10 | authenticate + requireAdmin |
-| PATCH | /api/admin/assignment-requests/:id | 10 | authenticate + requireAdmin |
 | GET | /api/admin/users | 10 | authenticate + requireAdmin |
 | PATCH | /api/admin/users/:id/role | 10 | authenticate + requireSuperAdmin |
 
@@ -118,3 +121,8 @@
 | 9 | createNotification internal helper uses supabaseAdmin, not pg | Notifications created outside a transaction use the helper; inside a transaction (completeReview) use direct pg INSERT for atomicity |
 | 8 | quran_page_mappings populated at assignment creation (fire-and-forget) | getPageContent(pageNumber, false) called when assignment is created; ensures surah/juz snapshot is non-empty from first review. If QF prefetch fails: assignment creation still succeeds; mapping populates on next GET /api/quran/pages/:n/content call; until then surahBreakdown/juzBreakdown are empty for that page |
 | pre-9 | RLS enabled on all 23 application tables (migration 006) | No policies added — RLS + zero policies = deny all for anon/authenticated. Service role (supabaseAdmin) and postgres superuser (pg Pool) bypass RLS. Auth trigger is SECURITY DEFINER (bypasses RLS). Storage buckets set to private; signed URLs verified at storage API layer, independent of RLS |
+| 10 | assignTeacher uses pg transaction with SELECT FOR UPDATE lock | Prevents concurrent admin assigns racing on the same request; lock acquired before any mutation |
+| 10 | teacher_student_relationships upserted (not inserted) | ON CONFLICT (teacher_id, student_id) DO UPDATE SET status='active' — reactivates if previously deactivated without creating duplicates |
+| 10 | Notifications fire after COMMIT, not inside transaction | Non-critical; notification failure must not roll back the assignment. Fire-and-forget .catch() logs but does not surface to caller |
+| 10 | updateTeacherStudentRelationship accepts _updatedBy but cannot store it | teacher_student_relationships has no updated_by column; param accepted for API compatibility, prefixed _ to suppress unused-var warning |
+| 10 | Relationship status CHECK: active, inactive, pending only | 'paused', 'ended', 'archived' require a schema migration before use; zod schema enforces the same constraint at the API layer |

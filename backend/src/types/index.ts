@@ -42,6 +42,8 @@ export type NotificationType =
   | 'teacher_requested_resubmission'
   | 'admin_assigned_teacher'
   | 'student_assigned_to_teacher'
+  | 'relationship_deactivated'
+  | 'relationship_reactivated'
   | 'voice_note_added'
   | 'attempt_comment_added';
 

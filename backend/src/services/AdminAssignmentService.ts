@@ -167,32 +167,15 @@ export class AdminAssignmentService {
   //   1. Marks assignment_request → 'assigned'
   //   2. Upserts teacher_student_relationships → status 'active'
   //   3. Updates student user_profiles.onboarding_status → 'active'
+  // All request-state guards run inside the transaction after the FOR UPDATE lock
+  // to eliminate the race window between pre-flight checks and the UPDATE.
   // Notifications (student + teacher) are created after the COMMIT — non-blocking.
   async assignTeacher(
     requestId: string,
     teacherId: string,
     assignedBy: string,
   ): Promise<AssignmentRequestRow> {
-    // ── Pre-flight ────────────────────────────────────────────────────────────
-    const { data: reqRow } = await supabaseAdmin
-      .from('student_assignment_requests')
-      .select('id, student_id, status')
-      .eq('id', requestId)
-      .maybeSingle();
-
-    if (!reqRow) throw new AppError(404, 'Assignment request not found');
-
-    const r = reqRow as Record<string, unknown>;
-    if (r.status === 'assigned') {
-      throw new AppError(409, 'Student is already assigned to a teacher');
-    }
-    if (r.status !== 'pending_assignment') {
-      throw new AppError(409, `Request has status "${r.status}" and cannot be assigned`);
-    }
-
-    const studentId = r.student_id as string;
-
-    // Verify teacher exists and has role = 'teacher'
+    // ── Pre-flight: validate teacher only (role is immutable) ─────────────────
     const { data: teacherRow } = await supabaseAdmin
       .from('users')
       .select('id, display_name, role')
@@ -205,27 +188,37 @@ export class AdminAssignmentService {
       throw new AppError(400, 'Specified user is not a teacher');
     }
 
-    // Fetch student display_name for teacher notification
-    const { data: studentRow } = await supabaseAdmin
-      .from('users')
-      .select('display_name')
-      .eq('id', studentId)
-      .maybeSingle();
-    const student = studentRow as Record<string, unknown>;
-
     // ── Transaction ───────────────────────────────────────────────────────────
     const pool = requirePgPool();
     const client = await pool.connect();
     let updatedRequest: Record<string, unknown>;
+    let studentId!: string;
 
     try {
       await client.query('BEGIN');
 
-      // Lock the request row to prevent concurrent assigns
-      await client.query(
-        'SELECT id FROM student_assignment_requests WHERE id = $1 FOR UPDATE',
+      // Lock the row first — all request-state checks happen here so they are
+      // consistent with the subsequent UPDATE (no pre-flight/lock race window).
+      const { rows: lockRows } = await client.query<{
+        id: string;
+        student_id: string;
+        status: string;
+      }>(
+        'SELECT id, student_id, status FROM student_assignment_requests WHERE id = $1 FOR UPDATE',
         [requestId],
       );
+
+      if (lockRows.length === 0) throw new AppError(404, 'Assignment request not found');
+
+      const locked = lockRows[0];
+      if (locked.status === 'assigned') {
+        throw new AppError(409, 'Student is already assigned to a teacher');
+      }
+      if (locked.status !== 'pending_assignment') {
+        throw new AppError(409, `Request has status "${locked.status}" and cannot be assigned`);
+      }
+
+      studentId = locked.student_id;
 
       // 1. Update assignment request
       const { rows: [ar] } = await client.query<Record<string, unknown>>(`
@@ -239,6 +232,8 @@ export class AdminAssignmentService {
         WHERE id = $3
         RETURNING *
       `, [teacherId, assignedBy, requestId]);
+
+      if (!ar) throw new AppError(500, 'Failed to update assignment request');
       updatedRequest = ar;
 
       // 2. Upsert teacher_student_relationships — reactivates if previously deactivated
@@ -264,6 +259,14 @@ export class AdminAssignmentService {
     }
 
     // ── Notifications (fire-and-forget after COMMIT) ───────────────────────
+    // Fetch student info for notification body and response shape
+    const { data: studentInfo } = await supabaseAdmin
+      .from('users')
+      .select('email, display_name')
+      .eq('id', studentId)
+      .maybeSingle();
+    const si = (studentInfo as Record<string, unknown>) ?? {};
+
     notificationService.createNotification({
       recipientUserId: studentId,
       actorUserId: assignedBy,
@@ -280,44 +283,39 @@ export class AdminAssignmentService {
       actorUserId: assignedBy,
       type: 'admin_assigned_teacher',
       title: 'A new student has been assigned to you',
-      body: `${student?.display_name as string ?? 'A student'} has been added to your students.`,
+      body: `${(si.display_name as string) ?? 'A student'} has been added to your students.`,
       data: { requestId, studentId },
     }).catch((err) => {
       console.error('[AdminAssignmentService] Teacher notification failed:', err);
     });
 
-    // Fetch student info for the response (not available from the pg RETURNING row)
-    const { data: studentInfo } = await supabaseAdmin
-      .from('users')
-      .select('email, display_name')
-      .eq('id', studentId)
-      .maybeSingle();
-    const si = studentInfo as Record<string, unknown>;
-
     return toAssignmentRequestRow(
       updatedRequest!,
-      (si?.email as string) ?? '',
-      (si?.display_name as string) ?? '',
+      (si.email as string) ?? '',
+      (si.display_name as string) ?? '',
     );
   }
 
   // Updates the status of a teacher-student relationship.
   // Allowed values: 'active' | 'inactive' | 'pending' (DB constraint).
   // Note: 'paused', 'ended', 'archived' require a schema migration — not yet supported.
-  // Note: updatedBy is accepted for API compatibility but cannot be stored
-  //       (teacher_student_relationships has no updated_by column).
+  // Note: teacher_student_relationships has no updated_by column — updatedBy is used
+  //       only as notification actorUserId.
   async updateTeacherStudentRelationship(
     relationshipId: string,
     status: 'active' | 'inactive' | 'pending',
-    _updatedBy: string,
+    updatedBy: string,
   ): Promise<TeacherStudentRelationshipRow> {
     const { data: existing } = await supabaseAdmin
       .from('teacher_student_relationships')
-      .select('id')
+      .select('id, student_id, status')
       .eq('id', relationshipId)
       .maybeSingle();
 
     if (!existing) throw new AppError(404, 'Teacher-student relationship not found');
+
+    const rel = existing as Record<string, unknown>;
+    const previousStatus = rel.status as string;
 
     const { data, error } = await supabaseAdmin
       .from('teacher_student_relationships')
@@ -327,7 +325,38 @@ export class AdminAssignmentService {
       .single();
 
     if (error || !data) throw new AppError(500, 'Failed to update relationship');
-    return toRelationshipRow(data as Record<string, unknown>);
+
+    const result = toRelationshipRow(data as Record<string, unknown>);
+
+    // Fire-and-forget in-app notifications for meaningful status transitions.
+    if (status !== previousStatus && status !== 'pending') {
+      const studentId = rel.student_id as string;
+      if (status === 'inactive') {
+        notificationService.createNotification({
+          recipientUserId: studentId,
+          actorUserId: updatedBy,
+          type: 'relationship_deactivated',
+          title: 'Your teacher assignment has been paused',
+          body: 'Your teacher assignment has been set to inactive. Contact your admin if you have questions.',
+          data: { relationshipId },
+        }).catch((err) => {
+          console.error('[AdminAssignmentService] Deactivated notification failed:', err);
+        });
+      } else if (status === 'active') {
+        notificationService.createNotification({
+          recipientUserId: studentId,
+          actorUserId: updatedBy,
+          type: 'relationship_reactivated',
+          title: 'Your teacher assignment has been reactivated',
+          body: 'You have been reactivated with your teacher.',
+          data: { relationshipId },
+        }).catch((err) => {
+          console.error('[AdminAssignmentService] Reactivated notification failed:', err);
+        });
+      }
+    }
+
+    return result;
   }
 }
 

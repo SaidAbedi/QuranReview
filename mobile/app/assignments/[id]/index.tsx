@@ -93,8 +93,8 @@ export default function AssignmentDetailScreen() {
 
   const handleRecord = () => {
     router.push({
-      pathname: `/assignments/${id}/record` as '/assignments/[id]/record',
-      params: submission ? { submissionId: submission.id } : {},
+      pathname: '/assignments/[id]/record',
+      params: submission ? { id, submissionId: submission.id } : { id },
     });
   };
 

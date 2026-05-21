@@ -45,7 +45,7 @@ export default function RootLayout() {
         if (segments[0] !== 'pending') router.replace('/pending');
       } else {
         if (inAuthGroup || segments[0] === 'pending') {
-          router.replace('/(tabs)/');
+          router.replace('/(tabs)' as '/');  // typed-routes requires a cast here
         }
       }
     }

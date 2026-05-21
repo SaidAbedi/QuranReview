@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { Audio } from 'expo-av';
-import {
-  FileSystemUploadType,
-  uploadAsync,
-} from 'expo-file-system/legacy';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { createAttempt, createSubmission } from '@/api/submissions';
 import { Button } from '@/components/ui/Button';
+
+// expo-av is a native module — unavailable in Expo Go.
+// Lazy-require so the module always exports a default component, even when
+// the native runtime is missing. A dev build is required for actual recording.
+let AudioModule: typeof import('expo-av') | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  AudioModule = require('expo-av');
+} catch {
+  // Expo Go or native module not linked — recording unavailable.
+}
+
+let UploadModule: {
+  uploadAsync: typeof import('expo-file-system/legacy').uploadAsync;
+  FileSystemUploadType: typeof import('expo-file-system/legacy').FileSystemUploadType;
+} | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  UploadModule = require('expo-file-system/legacy');
+} catch {
+  // Not available in this runtime.
+}
 
 type RecordState = 'idle' | 'recording' | 'stopped' | 'uploading' | 'done';
 
@@ -18,7 +35,8 @@ export default function RecordScreen() {
   }>();
   const router = useRouter();
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recordingRef = useRef<any>(null);
   const [state, setState] = useState<RecordState>('idle');
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState(0);
@@ -30,6 +48,31 @@ export default function RecordScreen() {
       recordingRef.current?.stopAndUnloadAsync().catch(() => {});
     };
   }, []);
+
+  // Native module unavailable — show a clear explanation instead of crashing.
+  if (!AudioModule) {
+    return (
+      <>
+        <Stack.Screen options={{ title: 'Record Recitation' }} />
+        <View style={styles.unavailableContainer}>
+          <Text style={styles.unavailableTitle}>Development Build Required</Text>
+          <Text style={styles.unavailableBody}>
+            Audio recording uses a native module that is not included in Expo Go.
+            {'\n\n'}
+            To enable recording, install the app via a development build:
+            {'\n\n'}
+            {'  '}1. Install EAS CLI: npm install -g eas-cli{'\n'}
+            {'  '}2. eas build --profile development --platform ios{'\n'}
+            {'  '}3. Install the build on your device{'\n'}
+            {'  '}4. Run: npx expo start --dev-client
+          </Text>
+          <Button title="Go Back" variant="secondary" onPress={() => router.back()} />
+        </View>
+      </>
+    );
+  }
+
+  const Audio = AudioModule.Audio;
 
   const handleStartRecording = async () => {
     try {
@@ -58,7 +101,10 @@ export default function RecordScreen() {
         setDurationMs((prev) => prev + 1000);
       }, 1000);
     } catch (e: unknown) {
-      Alert.alert('Recording Error', e instanceof Error ? e.message : 'Could not start recording');
+      Alert.alert(
+        'Recording Error',
+        e instanceof Error ? e.message : 'Could not start recording',
+      );
     }
   };
 
@@ -77,15 +123,17 @@ export default function RecordScreen() {
 
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
     } catch (e: unknown) {
-      Alert.alert('Recording Error', e instanceof Error ? e.message : 'Could not stop recording');
+      Alert.alert(
+        'Recording Error',
+        e instanceof Error ? e.message : 'Could not stop recording',
+      );
     }
   };
 
   const handleSubmit = async () => {
-    if (!localUri) return;
+    if (!localUri || !UploadModule) return;
     setState('uploading');
     try {
-      // Get a signed upload URL by creating a submission or a new attempt.
       let uploadUrl: string;
       if (submissionId) {
         const result = await createAttempt(submissionId);
@@ -95,10 +143,9 @@ export default function RecordScreen() {
         uploadUrl = result.uploadUrl;
       }
 
-      // Upload the recording as binary.
-      const uploadResult = await uploadAsync(uploadUrl, localUri, {
+      const uploadResult = await UploadModule.uploadAsync(uploadUrl, localUri, {
         httpMethod: 'PUT',
-        uploadType: FileSystemUploadType.BINARY_CONTENT,
+        uploadType: UploadModule.FileSystemUploadType.BINARY_CONTENT,
         headers: { 'Content-Type': 'audio/m4a' },
       });
 
@@ -114,7 +161,10 @@ export default function RecordScreen() {
       );
     } catch (e: unknown) {
       setState('stopped');
-      Alert.alert('Upload Error', e instanceof Error ? e.message : 'Could not upload recording');
+      Alert.alert(
+        'Upload Error',
+        e instanceof Error ? e.message : 'Could not upload recording',
+      );
     }
   };
 
@@ -138,7 +188,6 @@ export default function RecordScreen() {
       <Stack.Screen options={{ title: 'Record Recitation' }} />
       <View style={styles.container}>
         <View style={styles.card}>
-          {/* Status label */}
           <View style={[styles.indicator, state === 'recording' && styles.indicatorActive]} />
           <Text style={styles.stateLabel}>
             {state === 'idle' && 'Ready to record'}
@@ -157,11 +206,9 @@ export default function RecordScreen() {
           {state === 'idle' && (
             <Button title="Start Recording" onPress={handleStartRecording} />
           )}
-
           {state === 'recording' && (
             <Button title="Stop Recording" variant="danger" onPress={handleStopRecording} />
           )}
-
           {state === 'stopped' && (
             <>
               <Button
@@ -178,10 +225,7 @@ export default function RecordScreen() {
               />
             </>
           )}
-
-          {state === 'uploading' && (
-            <Button title="Uploading…" loading disabled />
-          )}
+          {state === 'uploading' && <Button title="Uploading…" loading disabled />}
         </View>
 
         <Text style={styles.hint}>
@@ -206,6 +250,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 24,
   },
+  unavailableContainer: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+    padding: 24,
+    justifyContent: 'center',
+    gap: 16,
+  },
+  unavailableTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1B4F72',
+    textAlign: 'center',
+  },
+  unavailableBody: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 22,
+  },
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -221,9 +283,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#E5E7EB',
   },
-  indicatorActive: {
-    backgroundColor: '#DC2626',
-  },
+  indicatorActive: { backgroundColor: '#DC2626' },
   stateLabel: {
     fontSize: 18,
     fontWeight: '600',

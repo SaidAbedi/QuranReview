@@ -46,6 +46,43 @@ npm run dev
 npm run build && npm start
 ```
 
+## Mobile (Expo)
+
+```bash
+# Switch to the correct Node version (same requirement as backend)
+cd mobile
+nvm use          # reads .nvmrc (22)
+
+# Install dependencies
+npm install
+
+# Configure env — create mobile/.env (git-ignored)
+# EXPO_PUBLIC_API_BASE_URL=http://localhost:3000/api
+# EXPO_PUBLIC_SUPABASE_URL=          ← your Supabase project URL
+# EXPO_PUBLIC_SUPABASE_ANON_KEY=     ← public anon key (safe to ship in app bundle)
+
+# Start Metro bundler
+npx expo start
+```
+
+To run on a physical device, install **Expo Go** from the App Store or Google Play, then:
+1. Make sure your phone and dev machine are on the **same Wi-Fi network**.
+2. Run `npx expo start` — a QR code appears in the terminal.
+3. **iOS**: open the Camera app and point it at the QR code.
+4. **Android**: open Expo Go and tap "Scan QR code".
+
+> **Note:** Expo Go runs a pre-built Expo SDK runtime. Some native modules (e.g. `expo-av` audio recording) work in Expo Go, but if a module requires a custom native build you will need to run `npx expo run:ios` or `npx expo run:android` with Xcode / Android Studio installed.
+
+### Troubleshooting: backend crashes on startup
+
+If the backend crashes immediately after `npm run dev` with an error inside `RealtimeClient` or `WebSocket`, check your Node version first:
+
+```bash
+node -v   # must be v22.x.x
+```
+
+If it shows v18, run `nvm use 22` and restart. Do **not** add a `ws` workaround — the correct fix is using Node 22, which ships native WebSocket.
+
 ## Database migrations
 
 Migrations live in `database/migrations/` and are numbered sequentially. Apply them in order via the Supabase SQL Editor, or use the migration runner:

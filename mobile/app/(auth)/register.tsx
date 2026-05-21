@@ -31,11 +31,19 @@ export default function RegisterScreen() {
     }
 
     setLoading(true);
+    // Derive the confirmation redirect URL from the env.
+    // EXPO_PUBLIC_AUTH_REDIRECT_URL can be set explicitly, or we fall back to
+    // stripping /api from the API base URL and appending /auth/callback.
+    const authRedirectUrl =
+      process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL ??
+      process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/api$/, '/auth/callback');
+
     const { error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         data: { display_name: displayName.trim() },
+        emailRedirectTo: authRedirectUrl,
       },
     });
     setLoading(false);

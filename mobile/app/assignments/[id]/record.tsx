@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { createAttempt, createSubmission } from '@/api/submissions';
+import { ApiError } from '@/api/client';
+import { createAttempt, createSubmission, getStudentSubmissions } from '@/api/submissions';
 import { Button } from '@/components/ui/Button';
 
 // expo-av is a native module — unavailable in Expo Go.
@@ -139,8 +140,22 @@ export default function RecordScreen() {
         const result = await createAttempt(submissionId);
         uploadUrl = result.uploadUrl;
       } else {
-        const result = await createSubmission(assignmentId);
-        uploadUrl = result.uploadUrl;
+        // First attempt: create a new submission.
+        // If one already exists (409), look it up and create another attempt instead.
+        try {
+          const result = await createSubmission(assignmentId);
+          uploadUrl = result.uploadUrl;
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 409) {
+            const subs = await getStudentSubmissions();
+            const existing = subs.find((s) => s.assignmentId === assignmentId);
+            if (!existing) throw new Error('Could not find existing submission');
+            const result = await createAttempt(existing.id);
+            uploadUrl = result.uploadUrl;
+          } else {
+            throw err;
+          }
+        }
       }
 
       const uploadResult = await UploadModule.uploadAsync(uploadUrl, localUri, {

@@ -33,7 +33,7 @@ export default function ProgressScreen() {
   if (error) return <ErrorScreen message={error} onRetry={() => load()} />;
   if (!progress) return null;
 
-  const pct = Math.min(100, Math.max(0, progress.completionPercent ?? 0));
+  const pct = Math.min(100, Math.max(0, progress.overallCompletionPercent ?? 0));
 
   return (
     <ScrollView
@@ -59,13 +59,21 @@ export default function ProgressScreen() {
       <View style={styles.statsGrid}>
         <StatCard label="Assigned" value={progress.pagesAssigned} color="#1B4F72" />
         <StatCard label="Completed" value={progress.pagesCompleted} color="#059669" />
-        <StatCard label="In Progress" value={progress.pagesInProgress ?? 0} color="#D97706" />
-        <StatCard label="Not Started" value={progress.pagesNotStarted ?? 0} color="#6B7280" />
+        <StatCard
+          label="Needs Revision"
+          value={progress.pagesNeedsResubmission ?? 0}
+          color="#D97706"
+        />
+        <StatCard
+          label="Total Pages"
+          value={progress.totalPagesInQuran}
+          color="#6B7280"
+        />
       </View>
 
-      {progress.snapshotUpdatedAt && (
+      {progress.calculatedAt && (
         <Text style={styles.updatedAt}>
-          Last updated {new Date(progress.snapshotUpdatedAt).toLocaleString()}
+          Last updated {new Date(progress.calculatedAt).toLocaleString()}
         </Text>
       )}
     </ScrollView>

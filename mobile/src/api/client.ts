@@ -53,6 +53,14 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+// Protocol-relative URLs (//host/path) don't work in React Native.
+// The Quran Foundation CDN returns them; normalize to https: here.
+export function normalizeUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('//')) return 'https:' + url;
+  return url;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),

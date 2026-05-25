@@ -10,7 +10,13 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.quranreview.app"
+      "bundleIdentifier": "com.quranreview.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "extraPodfileProperties": {
+        "EXPO_USE_PRECOMPILED_MODULES": "false"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +24,11 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "package": "com.quranreview.app",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +41,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5a03d5eb-95cb-4219-b3dd-10201af0f1b6"
+      }
     }
   }
 }

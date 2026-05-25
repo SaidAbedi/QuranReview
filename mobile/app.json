@@ -36,7 +36,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-av",
+      "expo-audio",
       "expo-secure-store"
     ],
     "experiments": {

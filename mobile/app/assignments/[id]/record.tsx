@@ -5,13 +5,13 @@ import { ApiError } from '@/api/client';
 import { createAttempt, createSubmission, getStudentSubmissions } from '@/api/submissions';
 import { Button } from '@/components/ui/Button';
 
-// expo-av is a native module — unavailable in Expo Go.
+// expo-audio is a native module — unavailable outside a development build.
 // Lazy-require so the module always exports a default component, even when
-// the native runtime is missing. A dev build is required for actual recording.
-let AudioModule: typeof import('expo-av') | null = null;
+// the native runtime is missing.
+let AudioModule: typeof import('expo-audio') | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  AudioModule = require('expo-av');
+  AudioModule = require('expo-audio');
 } catch {
   // Expo Go or native module not linked — recording unavailable.
 }
@@ -37,7 +37,7 @@ export default function RecordScreen() {
   const router = useRouter();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recordingRef = useRef<any>(null);
+  const recorderRef = useRef<any>(null);
   const [state, setState] = useState<RecordState>('idle');
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState(0);
@@ -46,11 +46,12 @@ export default function RecordScreen() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      recordingRef.current?.stopAndUnloadAsync().catch(() => {});
+      if (recorderRef.current?.isRecording) {
+        recorderRef.current.stop().catch(() => {});
+      }
     };
   }, []);
 
-  // Native module unavailable — show a clear explanation instead of crashing.
   if (!AudioModule) {
     return (
       <>
@@ -73,11 +74,9 @@ export default function RecordScreen() {
     );
   }
 
-  const Audio = AudioModule.Audio;
-
   const handleStartRecording = async () => {
     try {
-      const { granted } = await Audio.requestPermissionsAsync();
+      const { granted } = await AudioModule!.requestRecordingPermissionsAsync();
       if (!granted) {
         Alert.alert(
           'Microphone Access Required',
@@ -86,15 +85,15 @@ export default function RecordScreen() {
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await AudioModule!.setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      );
-      recordingRef.current = recording;
+      const recorder = new AudioModule!.AudioRecorder(AudioModule!.RecordingPresets.HIGH_QUALITY);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      recorderRef.current = recorder;
       setState('recording');
       setDurationMs(0);
 
@@ -110,19 +109,19 @@ export default function RecordScreen() {
   };
 
   const handleStopRecording = async () => {
-    if (!recordingRef.current) return;
+    if (!recorderRef.current) return;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
-      setLocalUri(uri ?? null);
+      await recorderRef.current.stop();
+      const uri = recorderRef.current.uri ?? null;
+      recorderRef.current = null;
+      setLocalUri(uri);
       setState('stopped');
 
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await AudioModule!.setAudioModeAsync({ allowsRecording: false });
     } catch (e: unknown) {
       Alert.alert(
         'Recording Error',
@@ -140,8 +139,6 @@ export default function RecordScreen() {
         const result = await createAttempt(submissionId);
         uploadUrl = result.uploadUrl;
       } else {
-        // First attempt: create a new submission.
-        // If one already exists (409), look it up and create another attempt instead.
         try {
           const result = await createSubmission(assignmentId);
           uploadUrl = result.uploadUrl;
@@ -226,11 +223,7 @@ export default function RecordScreen() {
           )}
           {state === 'stopped' && (
             <>
-              <Button
-                title="Submit Recording"
-                onPress={handleSubmit}
-                disabled={isUploading}
-              />
+              <Button title="Submit Recording" onPress={handleSubmit} disabled={isUploading} />
               <Button
                 title="Discard and Re-record"
                 variant="secondary"

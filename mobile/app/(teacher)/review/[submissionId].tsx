@@ -12,19 +12,34 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getAnnotations, batchSaveAnnotations } from '@/api/annotations';
-import { completeReview, getMistakeCategories } from '@/api/teacher';
+import { completeReview, getMistakeCategories, getAttemptHistory } from '@/api/teacher';
 import AudioPlayerBar from '@/components/AudioPlayerBar';
 import AnnotationCanvas from '@/components/AnnotationCanvas';
 import type {
   AnnotationRow,
   AnnotationPoint,
+  AttemptRow,
   MistakeCategoryRow,
   MistakeOptionRow,
   CreateAnnotationInput,
 } from '@/types/api';
 
-const CANVAS_WIDTH = 320;
-const CANVAS_HEIGHT = 480;
+const ATTEMPT_STATUS_LABELS: Record<string, string> = {
+  submitted: 'Submitted',
+  in_review: 'In Review',
+  reviewed: 'Reviewed',
+  needs_resubmission: 'Returned for Practice',
+  completed: 'Completed',
+};
+
+function relativeDate(iso: string | null): string {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return `${days}d ago`;
+}
 
 export default function ReviewDetailScreen() {
   const router = useRouter();
@@ -54,6 +69,9 @@ export default function ReviewDetailScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [savingAnnotations, setSavingAnnotations] = useState(false);
   const [loadingAnnotations, setLoadingAnnotations] = useState(true);
+  const [attemptHistory, setAttemptHistory] = useState<AttemptRow[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [canvasLayout, setCanvasLayout] = useState<{ width: number; height: number } | null>(null);
   const saveLock = useRef(false);
 
   const loadAnnotations = useCallback(async () => {
@@ -70,10 +88,9 @@ export default function ReviewDetailScreen() {
 
   useEffect(() => {
     loadAnnotations();
-    getMistakeCategories()
-      .then(setCategories)
-      .catch(() => {});
-  }, [loadAnnotations]);
+    getMistakeCategories().then(setCategories).catch(() => {});
+    getAttemptHistory(submissionId).then(setAttemptHistory).catch(() => {});
+  }, [loadAnnotations, submissionId]);
 
   const handleStrokeComplete = (points: AnnotationPoint[]) => {
     setPendingPoints((prev) => [...prev, points]);
@@ -94,10 +111,7 @@ export default function ReviewDetailScreen() {
         points: pts,
         style: { strokeColor: '#0E7490', strokeWidth: 3 },
         ...(selectedOption
-          ? {
-              mistakeOptionId: selectedOption.id,
-              quickLabel: selectedOption.label,
-            }
+          ? { mistakeOptionId: selectedOption.id, quickLabel: selectedOption.label }
           : {}),
       }));
       const saved = await batchSaveAnnotations(submissionId, attemptId, inputs);
@@ -112,7 +126,44 @@ export default function ReviewDetailScreen() {
     }
   };
 
-  const handleCompleteReview = (pageStatus: 'completed' | 'needs_resubmission') => {
+  // Returns true if annotations were saved (or there was nothing to save).
+  // Returns false and shows an error if save failed — caller must not proceed.
+  const autoSavePendingAnnotations = async (): Promise<boolean> => {
+    if (pendingPoints.length === 0) return true;
+    if (saveLock.current) return false;
+    saveLock.current = true;
+    setSavingAnnotations(true);
+    try {
+      const inputs: CreateAnnotationInput[] = pendingPoints.map((pts) => ({
+        annotationType: 'freehand',
+        anchorType: 'page_region',
+        points: pts,
+        style: { strokeColor: '#0E7490', strokeWidth: 3 },
+        ...(selectedOption
+          ? { mistakeOptionId: selectedOption.id, quickLabel: selectedOption.label }
+          : {}),
+      }));
+      const saved = await batchSaveAnnotations(submissionId, attemptId, inputs);
+      setSavedAnnotations((prev) => [...prev, ...saved]);
+      setPendingPoints([]);
+      setSelectedOption(null);
+      return true;
+    } catch (e) {
+      Alert.alert(
+        'Annotations Not Saved',
+        'Your annotations could not be saved. Please try again before completing the review.',
+      );
+      return false;
+    } finally {
+      setSavingAnnotations(false);
+      saveLock.current = false;
+    }
+  };
+
+  const handleCompleteReview = async (pageStatus: 'completed' | 'needs_resubmission') => {
+    const didSave = await autoSavePendingAnnotations();
+    if (!didSave) return;
+
     const label = pageStatus === 'completed' ? 'Mark as Complete' : 'Request Another Attempt';
     const body =
       pageStatus === 'completed'
@@ -145,6 +196,7 @@ export default function ReviewDetailScreen() {
   };
 
   const pageTitle = `Page ${pageNumber || '?'}${assignmentTitle ? ` — ${assignmentTitle}` : ''}`;
+  const busy = submitting || savingAnnotations;
 
   return (
     <>
@@ -153,20 +205,26 @@ export default function ReviewDetailScreen() {
         {/* Meta row */}
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>{pageTitle}</Text>
-          <Text style={styles.metaText}>
-            Attempt {attemptNumber || '1'}
-          </Text>
+          <Text style={styles.metaText}>Attempt {attemptNumber || '1'}</Text>
         </View>
 
         {/* Audio player */}
         <AudioPlayerBar submissionId={submissionId} attemptId={attemptId} />
 
         {/* Page image + annotation canvas */}
-        <View style={styles.canvasWrapper}>
+        <View
+          style={styles.canvasWrapper}
+          onLayout={(e) =>
+            setCanvasLayout({
+              width: e.nativeEvent.layout.width,
+              height: e.nativeEvent.layout.height,
+            })
+          }
+        >
           {pageImageUrl ? (
             <Image
               source={{ uri: pageImageUrl }}
-              style={styles.pageImage}
+              style={StyleSheet.absoluteFill}
               resizeMode="contain"
             />
           ) : (
@@ -179,13 +237,15 @@ export default function ReviewDetailScreen() {
               <ActivityIndicator color="#1B4F72" />
             </View>
           ) : (
-            <AnnotationCanvas
-              width={CANVAS_WIDTH}
-              height={CANVAS_HEIGHT}
-              savedAnnotations={savedAnnotations}
-              onStrokeComplete={handleStrokeComplete}
-              onUndoLast={handleUndoLast}
-            />
+            canvasLayout && (
+              <AnnotationCanvas
+                width={canvasLayout.width}
+                height={canvasLayout.height}
+                savedAnnotations={savedAnnotations}
+                onStrokeComplete={handleStrokeComplete}
+                onUndoLast={handleUndoLast}
+              />
+            )
           )}
         </View>
 
@@ -228,22 +288,63 @@ export default function ReviewDetailScreen() {
         {/* Review actions */}
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.completeBtn, submitting && styles.disabledBtn]}
+            style={[styles.actionBtn, styles.completeBtn, busy && styles.disabledBtn]}
             onPress={() => handleCompleteReview('completed')}
-            disabled={submitting}
+            disabled={busy}
           >
-            <Text style={styles.actionBtnText}>Mark as Complete</Text>
+            {busy && submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.actionBtnText}>Mark as Complete</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.resubmitBtn, submitting && styles.disabledBtn]}
+            style={[styles.actionBtn, styles.resubmitBtn, busy && styles.disabledBtn]}
             onPress={() => handleCompleteReview('needs_resubmission')}
-            disabled={submitting}
+            disabled={busy}
           >
             <Text style={[styles.actionBtnText, styles.resubmitBtnText]}>
               Request Another Attempt
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Attempt history */}
+        {attemptHistory.length > 0 && (
+          <View style={styles.historySection}>
+            <TouchableOpacity
+              style={styles.historyHeader}
+              onPress={() => setShowHistory((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.historyHeaderText}>
+                Attempt History ({attemptHistory.length})
+              </Text>
+              <Text style={styles.historyChevron}>{showHistory ? '▲' : '▼'}</Text>
+            </TouchableOpacity>
+            {showHistory && (
+              <View style={styles.historyList}>
+                {attemptHistory.map((a) => {
+                  const isCurrent = a.id === attemptId;
+                  return (
+                    <View
+                      key={a.id}
+                      style={[styles.historyRow, isCurrent && styles.historyRowCurrent]}
+                    >
+                      <Text style={[styles.historyAttemptNum, isCurrent && styles.historyCurrentText]}>
+                        Attempt {a.attemptNumber}{isCurrent ? ' · current' : ''}
+                      </Text>
+                      <Text style={styles.historyStatus}>
+                        {ATTEMPT_STATUS_LABELS[a.status] ?? a.status}
+                      </Text>
+                      <Text style={styles.historyDate}>{relativeDate(a.submittedAt)}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Mistake picker modal */}
@@ -303,25 +404,19 @@ export default function ReviewDetailScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: '#F8F9FA' },
   content: { padding: 16, gap: 16, paddingBottom: 40 },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between' },
   metaText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
   canvasWrapper: {
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
-    alignSelf: 'center',
+    alignSelf: 'stretch',
+    aspectRatio: 0.7,
     backgroundColor: '#fff',
     borderRadius: 8,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  pageImage: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
   pagePlaceholder: {
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F3F4F6',
@@ -329,18 +424,11 @@ const styles = StyleSheet.create({
   placeholderText: { fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
   canvasLoading: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  toolbar: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
+  toolbar: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   toolBtn: {
     flex: 1,
     backgroundColor: '#fff',
@@ -356,26 +444,45 @@ const styles = StyleSheet.create({
   saveBtnText: { color: '#fff' },
   disabled: { color: '#D1D5DB' },
   actions: { gap: 10 },
-  actionBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
+  actionBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   completeBtn: { backgroundColor: '#1B4F72' },
-  resubmitBtn: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#1B4F72',
-  },
+  resubmitBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#1B4F72' },
   disabledBtn: { opacity: 0.5 },
   actionBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   resubmitBtnText: { color: '#1B4F72' },
-  // Mistake picker modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
+  // Attempt history
+  historySection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
   },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+  },
+  historyHeaderText: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  historyChevron: { fontSize: 12, color: '#9CA3AF' },
+  historyList: { borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  historyRowCurrent: { backgroundColor: '#EFF6FF' },
+  historyAttemptNum: { fontSize: 13, color: '#374151', fontWeight: '500', flex: 1 },
+  historyCurrentText: { color: '#1D4ED8', fontWeight: '700' },
+  historyStatus: { fontSize: 12, color: '#6B7280' },
+  historyDate: { fontSize: 12, color: '#9CA3AF', minWidth: 60, textAlign: 'right' },
+  // Mistake picker modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
@@ -393,11 +500,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 4,
   },
-  optionRow: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
+  optionRow: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8 },
   optionSelected: { backgroundColor: '#EFF6FF' },
   optionLabel: { fontSize: 15, color: '#111827' },
   modalClose: {

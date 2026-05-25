@@ -1,5 +1,6 @@
 import { api, normalizeUrl } from './client';
 import type {
+  AttemptRow,
   TeacherQueueItem,
   CompleteReviewResult,
   SignedReadUrlResult,
@@ -36,3 +37,6 @@ export const completeReview = (
 
 export const getMistakeCategories = (): Promise<MistakeCategoryRow[]> =>
   api.get<MistakeCategoryRow[]>('/mistake-categories');
+
+export const getAttemptHistory = (submissionId: string): Promise<AttemptRow[]> =>
+  api.get<AttemptRow[]>(`/submissions/${submissionId}/attempts`);

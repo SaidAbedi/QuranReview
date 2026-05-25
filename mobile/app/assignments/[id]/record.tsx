@@ -1,33 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ApiError } from '@/api/client';
-import { createAttempt, createSubmission, getStudentSubmissions } from '@/api/submissions';
-import { Button } from '@/components/ui/Button';
-
-// expo-audio is a native module — unavailable outside a development build.
-// Lazy-require so the module always exports a default component, even when
-// the native runtime is missing.
-let AudioModule: typeof import('expo-audio') | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  AudioModule = require('expo-audio');
-} catch {
-  // Expo Go or native module not linked — recording unavailable.
-}
+import { useEffect, useRef, useState } from "react";
+import { Alert, StyleSheet, Text, View } from "react-native";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useAudioPlayer,
+  useAudioRecorder,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  RecordingPresets,
+} from "expo-audio";
+import { ApiError } from "@/api/client";
+import {
+  createAttempt,
+  createSubmission,
+  getStudentSubmissions,
+} from "@/api/submissions";
+import { Button } from "@/components/ui/Button";
 
 let UploadModule: {
-  uploadAsync: typeof import('expo-file-system/legacy').uploadAsync;
-  FileSystemUploadType: typeof import('expo-file-system/legacy').FileSystemUploadType;
+  uploadAsync: typeof import("expo-file-system/legacy").uploadAsync;
+  FileSystemUploadType: typeof import("expo-file-system/legacy").FileSystemUploadType;
 } | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  UploadModule = require('expo-file-system/legacy');
+  UploadModule = require("expo-file-system/legacy");
 } catch {
   // Not available in this runtime.
 }
 
-type RecordState = 'idle' | 'recording' | 'stopped' | 'uploading' | 'done';
+type RecordState = "idle" | "recording" | "stopped" | "uploading" | "done";
 
 export default function RecordScreen() {
   const { id: assignmentId, submissionId } = useLocalSearchParams<{
@@ -36,65 +36,43 @@ export default function RecordScreen() {
   }>();
   const router = useRouter();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recorderRef = useRef<any>(null);
-  const [state, setState] = useState<RecordState>('idle');
-  const [localUri, setLocalUri] = useState<string | null>(null);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [state, setState] = useState<RecordState>("idle");
   const [durationMs, setDurationMs] = useState(0);
+  const [recordedUri, setRecordedUri] = useState<string | null>(null);
+  const player = useAudioPlayer(recordedUri);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isRecordingRef = useRef(false);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (recorderRef.current?.isRecording) {
-        recorderRef.current.stop().catch(() => {});
+      // Use ref to avoid touching the SharedObject after the hook releases it.
+      if (isRecordingRef.current) {
+        recorder.stop().catch(() => {});
       }
     };
-  }, []);
-
-  if (!AudioModule) {
-    return (
-      <>
-        <Stack.Screen options={{ title: 'Record Recitation' }} />
-        <View style={styles.unavailableContainer}>
-          <Text style={styles.unavailableTitle}>Development Build Required</Text>
-          <Text style={styles.unavailableBody}>
-            Audio recording uses a native module that is not included in Expo Go.
-            {'\n\n'}
-            To enable recording, install the app via a development build:
-            {'\n\n'}
-            {'  '}1. Install EAS CLI: npm install -g eas-cli{'\n'}
-            {'  '}2. eas build --profile development --platform ios{'\n'}
-            {'  '}3. Install the build on your device{'\n'}
-            {'  '}4. Run: npx expo start --dev-client
-          </Text>
-          <Button title="Go Back" variant="secondary" onPress={() => router.back()} />
-        </View>
-      </>
-    );
-  }
+  }, [recorder]);
 
   const handleStartRecording = async () => {
     try {
-      const { granted } = await AudioModule!.requestRecordingPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
         Alert.alert(
-          'Microphone Access Required',
-          'Please allow microphone access in Settings to record.',
+          "Microphone Access Required",
+          "Please allow microphone access in Settings to record.",
         );
         return;
       }
 
-      await AudioModule!.setAudioModeAsync({
+      await setAudioModeAsync({
         playsInSilentMode: true,
         allowsRecording: true,
       });
-
-      const recorder = new AudioModule!.AudioRecorder(AudioModule!.RecordingPresets.HIGH_QUALITY);
       await recorder.prepareToRecordAsync();
       recorder.record();
-      recorderRef.current = recorder;
-      setState('recording');
+      isRecordingRef.current = true;
+      setState("recording");
       setDurationMs(0);
 
       timerRef.current = setInterval(() => {
@@ -102,37 +80,34 @@ export default function RecordScreen() {
       }, 1000);
     } catch (e: unknown) {
       Alert.alert(
-        'Recording Error',
-        e instanceof Error ? e.message : 'Could not start recording',
+        "Recording Error",
+        e instanceof Error ? e.message : "Could not start recording",
       );
     }
   };
 
   const handleStopRecording = async () => {
-    if (!recorderRef.current) return;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     try {
-      await recorderRef.current.stop();
-      const uri = recorderRef.current.uri ?? null;
-      recorderRef.current = null;
-      setLocalUri(uri);
-      setState('stopped');
-
-      await AudioModule!.setAudioModeAsync({ allowsRecording: false });
+      await recorder.stop();
+      isRecordingRef.current = false;
+      setRecordedUri(recorder.uri);
+      setState("stopped");
+      await setAudioModeAsync({ allowsRecording: false });
     } catch (e: unknown) {
       Alert.alert(
-        'Recording Error',
-        e instanceof Error ? e.message : 'Could not stop recording',
+        "Recording Error",
+        e instanceof Error ? e.message : "Could not stop recording",
       );
     }
   };
 
   const handleSubmit = async () => {
-    if (!localUri || !UploadModule) return;
-    setState('uploading');
+    if (!recordedUri || !UploadModule) return;
+    setState("uploading");
     try {
       let uploadUrl: string;
       if (submissionId) {
@@ -146,7 +121,8 @@ export default function RecordScreen() {
           if (err instanceof ApiError && err.status === 409) {
             const subs = await getStudentSubmissions();
             const existing = subs.find((s) => s.assignmentId === assignmentId);
-            if (!existing) throw new Error('Could not find existing submission');
+            if (!existing)
+              throw new Error("Could not find existing submission");
             const result = await createAttempt(existing.id);
             uploadUrl = result.uploadUrl;
           } else {
@@ -155,34 +131,39 @@ export default function RecordScreen() {
         }
       }
 
-      const uploadResult = await UploadModule.uploadAsync(uploadUrl, localUri, {
-        httpMethod: 'PUT',
-        uploadType: UploadModule.FileSystemUploadType.BINARY_CONTENT,
-        headers: { 'Content-Type': 'audio/m4a' },
-      });
+      const uploadResult = await UploadModule.uploadAsync(
+        uploadUrl,
+        recordedUri,
+        {
+          httpMethod: "PUT",
+          uploadType: UploadModule.FileSystemUploadType.BINARY_CONTENT,
+          headers: { "Content-Type": "audio/m4a" },
+        },
+      );
 
       if (uploadResult.status < 200 || uploadResult.status >= 300) {
         throw new Error(`Upload failed with status ${uploadResult.status}`);
       }
 
-      setState('done');
+      setState("done");
       Alert.alert(
-        'Submitted',
-        'Your recitation has been submitted. Your teacher will review it soon.',
-        [{ text: 'OK', onPress: () => router.back() }],
+        "Submitted",
+        "Your recitation has been submitted. Your teacher will review it soon.",
+        [{ text: "OK", onPress: () => router.back() }],
       );
     } catch (e: unknown) {
-      setState('stopped');
+      setState("stopped");
       Alert.alert(
-        'Upload Error',
-        e instanceof Error ? e.message : 'Could not upload recording',
+        "Upload Error",
+        e instanceof Error ? e.message : "Could not upload recording",
       );
     }
   };
 
   const handleDiscard = () => {
-    setLocalUri(null);
-    setState('idle');
+    if (player.playing) player.pause();
+    setRecordedUri(null);
+    setState("idle");
     setDurationMs(0);
   };
 
@@ -190,40 +171,60 @@ export default function RecordScreen() {
     const secs = Math.floor(ms / 1000);
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const isUploading = state === 'uploading';
+  const isUploading = state === "uploading";
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Record Recitation' }} />
+      <Stack.Screen options={{ title: "Record Recitation" }} />
       <View style={styles.container}>
         <View style={styles.card}>
-          <View style={[styles.indicator, state === 'recording' && styles.indicatorActive]} />
+          <View
+            style={[
+              styles.indicator,
+              state === "recording" && styles.indicatorActive,
+            ]}
+          />
           <Text style={styles.stateLabel}>
-            {state === 'idle' && 'Ready to record'}
-            {state === 'recording' && 'Recording…'}
-            {state === 'stopped' && 'Recording complete'}
-            {state === 'uploading' && 'Uploading…'}
-            {state === 'done' && 'Submitted'}
+            {state === "idle" && "Ready to record"}
+            {state === "recording" && "Recording…"}
+            {state === "stopped" && "Recording complete"}
+            {state === "uploading" && "Uploading…"}
+            {state === "done" && "Submitted"}
           </Text>
 
-          {(state === 'recording' || state === 'stopped') && (
+          {(state === "recording" || state === "stopped") && (
             <Text style={styles.duration}>{formatDuration(durationMs)}</Text>
           )}
         </View>
 
         <View style={styles.actions}>
-          {state === 'idle' && (
+          {state === "idle" && (
             <Button title="Start Recording" onPress={handleStartRecording} />
           )}
-          {state === 'recording' && (
-            <Button title="Stop Recording" variant="danger" onPress={handleStopRecording} />
+          {state === "recording" && (
+            <Button
+              title="Stop Recording"
+              variant="danger"
+              onPress={handleStopRecording}
+            />
           )}
-          {state === 'stopped' && (
+          {state === "stopped" && (
             <>
-              <Button title="Submit Recording" onPress={handleSubmit} disabled={isUploading} />
+              <Button
+                title={player.playing ? "Stop Playback" : "Play Recording"}
+                variant="secondary"
+                onPress={() => (player.playing ? player.pause() : player.play())}
+                disabled={isUploading}
+              />
+              <Button
+                title="Submit Recording"
+                onPress={handleSubmit}
+                disabled={isUploading}
+                style={styles.secondaryBtn}
+              />
               <Button
                 title="Discard and Re-record"
                 variant="secondary"
@@ -233,17 +234,19 @@ export default function RecordScreen() {
               />
             </>
           )}
-          {state === 'uploading' && <Button title="Uploading…" loading disabled />}
+          {state === "uploading" && (
+            <Button title="Uploading…" loading disabled />
+          )}
         </View>
 
         <Text style={styles.hint}>
-          {state === 'idle'
-            ? 'Tap Start Recording when you are ready to recite.'
-            : state === 'recording'
-              ? 'Tap Stop Recording when you finish.'
-              : state === 'stopped'
-                ? 'Review and tap Submit, or discard to re-record.'
-                : ''}
+          {state === "idle"
+            ? "Tap Start Recording when you are ready to recite."
+            : state === "recording"
+              ? "Tap Stop Recording when you finish."
+              : state === "stopped"
+                ? "Review and tap Submit, or discard to re-record."
+                : ""}
         </Text>
       </View>
     </>
@@ -253,63 +256,45 @@ export default function RecordScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: "#F8F9FA",
     padding: 24,
-    justifyContent: 'center',
+    justifyContent: "center",
     gap: 24,
   },
-  unavailableContainer: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-    padding: 24,
-    justifyContent: 'center',
-    gap: 16,
-  },
-  unavailableTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1B4F72',
-    textAlign: 'center',
-  },
-  unavailableBody: {
-    fontSize: 14,
-    color: '#374151',
-    lineHeight: 22,
-  },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 32,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
     gap: 12,
   },
   indicator: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: "#E5E7EB",
   },
-  indicatorActive: { backgroundColor: '#DC2626' },
+  indicatorActive: { backgroundColor: "#DC2626" },
   stateLabel: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    textAlign: 'center',
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
   },
   duration: {
     fontSize: 40,
-    fontWeight: '700',
-    color: '#1B4F72',
-    fontVariant: ['tabular-nums'],
+    fontWeight: "700",
+    color: "#1B4F72",
+    fontVariant: ["tabular-nums"],
   },
   actions: { gap: 12 },
   secondaryBtn: { marginTop: 0 },
   hint: {
     fontSize: 13,
-    color: '#9CA3AF',
-    textAlign: 'center',
+    color: "#9CA3AF",
+    textAlign: "center",
     lineHeight: 18,
   },
 });

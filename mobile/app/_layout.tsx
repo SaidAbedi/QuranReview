@@ -1,33 +1,40 @@
-import { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
-import { useAuthStore } from '@/stores/authStore';
-import { supabase } from '@/lib/supabase';
-import { fetchMe } from '@/api/me';
+import { useEffect } from "react";
+import { Stack, useRouter, useSegments } from "expo-router";
+import { useAuthStore } from "@/stores/authStore";
+import { supabase } from "@/lib/supabase";
+import { fetchMe } from "@/api/me";
 
 export default function RootLayout() {
-  const { session, user, isLoading, setSession, setUser, setLoading } = useAuthStore();
+  const { session, user, isLoading, setSession, setUser, setLoading } =
+    useAuthStore();
   const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
     // Subscribe to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
-        setSession(newSession);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+      setSession(newSession);
 
-        if (newSession) {
-          try {
-            const me = await fetchMe();
-            setUser(me);
-          } catch {
-            setUser(null);
-          }
-        } else {
+      if (newSession) {
+        try {
+          // 10-second timeout so a dead backend doesn't block auth routing forever.
+          const me = await Promise.race([
+            fetchMe(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("fetchMe timeout")), 10_000),
+            ),
+          ]);
+          setUser(me);
+        } catch {
           setUser(null);
         }
-        setLoading(false);
-      },
-    );
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
 
     return () => subscription.unsubscribe();
   }, []);
@@ -35,17 +42,17 @@ export default function RootLayout() {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
+    const inAuthGroup = segments[0] === "(auth)";
 
     if (!session) {
-      if (!inAuthGroup) router.replace('/(auth)/login');
+      if (!inAuthGroup) router.replace("/(auth)/login");
     } else if (user) {
       const status = user.profile.onboardingStatus;
-      if (status === 'pending_assignment' || status === 'new') {
-        if (segments[0] !== 'pending') router.replace('/pending');
+      if (status === "pending_assignment" || status === "new") {
+        if (segments[0] !== "pending") router.replace("/pending");
       } else {
-        if (inAuthGroup || segments[0] === 'pending') {
-          router.replace('/(tabs)' as '/');  // typed-routes requires a cast here
+        if (inAuthGroup || segments[0] === "pending") {
+          router.replace("/(tabs)" as "/"); // typed-routes requires a cast here
         }
       }
     }

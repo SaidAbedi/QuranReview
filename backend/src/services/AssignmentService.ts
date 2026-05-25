@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../db/client';
+import { supabaseAdmin, requirePgPool } from '../db/client';
 import { AppError, UserRole } from '../types';
 import { quranContentService } from './QuranContentService';
 
@@ -23,6 +23,17 @@ export interface AssignmentSummary {
   status: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// Enriched queue item returned by getTeacherReviewQueue.
+// Includes student name and current submission/attempt info for the review queue UI.
+export interface TeacherQueueItem extends AssignmentSummary {
+  studentName: string;
+  submissionId: string | null;
+  currentAttemptId: string | null;
+  attemptNumber: number | null;
+  submissionStatus: string | null;
+  submittedAt: string | null;
 }
 
 // Legacy alias used by the route stub — keep for backward compat.
@@ -144,7 +155,8 @@ export class AssignmentService {
   // Teacher's pending review queue: assignments where the student has submitted
   // and the teacher has not yet reviewed. 'reviewed' assignments are excluded
   // because they represent completed or returned-for-practice reviews.
-  async getTeacherReviewQueue(teacherId: string): Promise<AssignmentSummary[]> {
+  // Returns enriched items including student name and current submission/attempt info.
+  async getTeacherReviewQueue(teacherId: string): Promise<TeacherQueueItem[]> {
     const { data, error } = await supabaseAdmin
       .from('assignments')
       .select(ASSIGNMENT_SELECT)
@@ -153,7 +165,52 @@ export class AssignmentService {
       .order('updated_at', { ascending: true });
 
     if (error) throw new AppError(500, 'Failed to fetch review queue');
-    return (data ?? []).map(toAssignmentSummary);
+    if (!data || data.length === 0) return [];
+
+    const assignments = data as Record<string, unknown>[];
+    const assignmentIds = assignments.map((a) => a.id as string);
+    const studentIds = [...new Set(assignments.map((a) => a.student_id as string))];
+
+    // Fetch student display names in one query.
+    const { data: students } = await supabaseAdmin
+      .from('users')
+      .select('id, display_name')
+      .in('id', studentIds);
+
+    const nameMap = new Map(
+      (students ?? []).map((s) => {
+        const row = s as Record<string, unknown>;
+        return [row.id as string, (row.display_name as string | null) ?? 'Unknown'];
+      }),
+    );
+
+    // Fetch submissions + current attempt number via a raw JOIN query.
+    const pool = requirePgPool();
+    const { rows: submissionRows } = await pool.query<Record<string, unknown>>(`
+      SELECT s.id, s.assignment_id, s.current_attempt_id, s.status, s.submitted_at,
+             sa.attempt_number
+      FROM submissions s
+      LEFT JOIN submission_attempts sa ON sa.id = s.current_attempt_id
+      WHERE s.assignment_id = ANY($1)
+    `, [assignmentIds]);
+
+    const subByAssignment = new Map(
+      submissionRows.map((r) => [r.assignment_id as string, r]),
+    );
+
+    return assignments.map((a) => {
+      const base = toAssignmentSummary(a);
+      const sub = subByAssignment.get(a.id as string) ?? null;
+      return {
+        ...base,
+        studentName: nameMap.get(a.student_id as string) ?? 'Unknown',
+        submissionId: sub ? (sub.id as string) : null,
+        currentAttemptId: sub ? ((sub.current_attempt_id as string | null) ?? null) : null,
+        attemptNumber: sub ? ((sub.attempt_number as number | null) ?? null) : null,
+        submissionStatus: sub ? (sub.status as string) : null,
+        submittedAt: sub ? ((sub.submitted_at as string | null) ?? null) : null,
+      };
+    });
   }
 }
 

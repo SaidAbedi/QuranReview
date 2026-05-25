@@ -91,6 +91,110 @@ export interface CreateAttemptResult {
   uploadUrl: string;
 }
 
+// ── Teacher review queue ─────────────────────────────────────────────────────
+
+export interface TeacherQueueItem {
+  id: string;
+  teacherId: string;
+  studentId: string;
+  studentName: string;
+  quranPageId: string;
+  pageNumber: number | null;
+  imageUrl: string | null;
+  title: string | null;
+  status: string;
+  submissionId: string | null;
+  currentAttemptId: string | null;
+  attemptNumber: number | null;
+  submissionStatus: string | null;
+  submittedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompleteReviewResult {
+  attempt: AttemptRow;
+  submission: SubmissionRow;
+  assignmentStatus: string;
+  pageProgressStatus: string;
+}
+
+// ── Annotations ──────────────────────────────────────────────────────────────
+
+export type AnnotationType =
+  | 'freehand' | 'circle' | 'underline' | 'highlight'
+  | 'note' | 'word_marker' | 'ayah_marker';
+
+export type MistakeType =
+  | 'tajweed' | 'harakat' | 'wrong_word' | 'wrong_ayah'
+  | 'makhraj' | 'madd' | 'ghunnah' | 'waqf'
+  | 'pronunciation' | 'memorization' | 'other';
+
+export interface AnnotationPoint { x: number; y: number }
+
+export interface AnnotationRow {
+  id: string;
+  submissionId: string;
+  submissionAttemptId: string;
+  teacherId: string;
+  quranPageId: string;
+  annotationType: AnnotationType;
+  anchorType: string;
+  points: AnnotationPoint[] | null;
+  style: Record<string, unknown>;
+  mistakeType: MistakeType | null;
+  mistakeOptionId: string | null;
+  quickLabel: string | null;
+  noteText: string | null;
+  recordingTimestampMs: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BatchAnnotationsResult {
+  data: AnnotationRow[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+export interface CreateAnnotationInput {
+  annotationType: AnnotationType;
+  anchorType?: string;
+  points?: AnnotationPoint[];
+  style?: Record<string, unknown>;
+  mistakeType?: MistakeType;
+  mistakeOptionId?: string;
+  quickLabel?: string;
+  noteText?: string;
+  recordingTimestampMs?: number;
+}
+
+// ── Mistake categories ───────────────────────────────────────────────────────
+
+export interface MistakeOptionRow {
+  id: string;
+  categoryId: string;
+  code: string;
+  label: string;
+  sortOrder: number;
+}
+
+export interface MistakeCategoryRow {
+  id: string;
+  code: string;
+  label: string;
+  description: string | null;
+  sortOrder: number;
+  options: MistakeOptionRow[];
+}
+
+// ── Signed URL ───────────────────────────────────────────────────────────────
+
+export interface SignedReadUrlResult {
+  url: string;
+  expiresAt: string;
+}
+
 // ── Quran pages ──────────────────────────────────────────────────────────────
 
 export interface QuranPageSummary {

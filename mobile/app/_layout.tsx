@@ -50,9 +50,18 @@ export default function RootLayout() {
       const status = user.profile.onboardingStatus;
       if (status === "pending_assignment" || status === "new") {
         if (segments[0] !== "pending") router.replace("/pending");
+      } else if (user.role === "admin" || user.role === "super_admin") {
+        if (segments[0] !== "admin-placeholder") {
+          router.replace("/admin-placeholder" as "/");
+        }
+      } else if (user.role === "teacher") {
+        if (segments[0] !== "(teacher)") {
+          router.replace("/(teacher)/queue" as "/");
+        }
       } else {
+        // student
         if (inAuthGroup || segments[0] === "pending") {
-          router.replace("/(tabs)" as "/"); // typed-routes requires a cast here
+          router.replace("/(tabs)" as "/");
         }
       }
     }
@@ -62,7 +71,9 @@ export default function RootLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(teacher)" />
       <Stack.Screen name="pending" />
+      <Stack.Screen name="admin-placeholder" />
       <Stack.Screen name="assignments" />
     </Stack>
   );

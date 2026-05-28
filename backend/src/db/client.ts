@@ -1,12 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
-import WebSocket from 'ws';
 import { env } from '../config/env';
 import { AppError } from '../types';
 
 // Service-role client — full DB access, used for all server-side operations.
 // Never expose this key to the mobile app or client-side code.
-// Node 18 has no native WebSocket; pass 'ws' so realtime-js doesn't throw.
 export const supabaseAdmin = createClient(
   env.SUPABASE_URL,
   env.SUPABASE_SERVICE_ROLE_KEY,
@@ -14,10 +12,6 @@ export const supabaseAdmin = createClient(
     auth: {
       autoRefreshToken: false,
       persistSession: false,
-    },
-    realtime: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      transport: WebSocket as any,
     },
   },
 );

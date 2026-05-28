@@ -243,7 +243,6 @@ export default function ReviewDetailScreen() {
                 height={canvasLayout.height}
                 savedAnnotations={savedAnnotations}
                 onStrokeComplete={handleStrokeComplete}
-                onUndoLast={handleUndoLast}
               />
             )
           )}

@@ -14,17 +14,21 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 
 const STATUS_LABELS: Record<string, string> = {
-  active: 'Active',
+  assigned: 'Active',
+  submitted: 'Submitted',
+  reviewed: 'Teacher Reviewed',
   completed: 'Completed',
+  needs_resubmission: 'Returned for Practice',
   archived: 'Archived',
-  pending: 'Pending',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  active: '#1B4F72',
+  assigned: '#1B4F72',
+  submitted: '#D97706',
+  reviewed: '#7C3AED',
   completed: '#059669',
+  needs_resubmission: '#DC2626',
   archived: '#9CA3AF',
-  pending: '#D97706',
 };
 
 export default function AssignmentsScreen() {

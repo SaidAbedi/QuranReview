@@ -12,7 +12,6 @@ interface Props {
   height: number;
   savedAnnotations: AnnotationRow[];
   onStrokeComplete: (points: AnnotationPoint[]) => void;
-  onUndoLast: () => void;
 }
 
 function pointsToPath(points: AnnotationPoint[], w: number, h: number): string {

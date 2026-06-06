@@ -11,7 +11,8 @@ interface Props {
   width: number;
   height: number;
   savedAnnotations: AnnotationRow[];
-  onStrokeComplete: (points: AnnotationPoint[]) => void;
+  onStrokeComplete?: (points: AnnotationPoint[]) => void;
+  readOnly?: boolean;
 }
 
 function pointsToPath(points: AnnotationPoint[], w: number, h: number): string {
@@ -27,6 +28,7 @@ export default function AnnotationCanvas({
   height,
   savedAnnotations,
   onStrokeComplete,
+  readOnly = false,
 }: Props) {
   const [pendingStrokes, setPendingStrokes] = useState<PendingStroke[]>([]);
   const currentStroke = useRef<AnnotationPoint[]>([]);
@@ -61,7 +63,7 @@ export default function AnnotationCanvas({
 
       onPanResponderRelease: () => {
         const pts = currentStroke.current;
-        if (pts.length >= 2) {
+        if (pts.length >= 2 && onStrokeComplete) {
           onStrokeComplete(pts);
           setPendingStrokes((prev) => {
             // Replace in-progress last stroke with final version.
@@ -76,7 +78,7 @@ export default function AnnotationCanvas({
   ).current;
 
   return (
-    <View style={[styles.canvas, { width, height }]} {...panResponder.panHandlers}>
+    <View style={[styles.canvas, { width, height }]} {...(readOnly ? {} : panResponder.panHandlers)}>
       <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
         {/* Saved annotations — solid teal */}
         {savedAnnotations.map((ann) =>

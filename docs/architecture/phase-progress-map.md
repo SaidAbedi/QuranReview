@@ -1,7 +1,7 @@
 # Phase Progress Map
 
 Tracks actual implementation status across backend, mobile, and remaining work.
-Last updated: 2026-06-06
+Last updated: 2026-06-06 (Phase 16 complete)
 
 > **Rule:** Update this file every time a phase is completed — mark it ✅ in the Phase Status table, update the Mobile Screen Map, and move it out of the Remaining Phases section.
 
@@ -35,7 +35,7 @@ Last updated: 2026-06-06
 | 13    | Student mobile flow                                  | ✅     |
 | 14    | Teacher mobile flow — queue, review, annotations     | ✅     |
 | 15    | Admin mobile flow — assign queue, relationships      | ✅     |
-| 16    | Student feedback viewer — see teacher annotations    | ⬜     |
+| 16    | Student feedback viewer — see teacher annotations    | ✅     |
 | 17    | Progress drill-down — surah & juz page-by-page       | ⬜     |
 | 18    | Attempt history on assignment detail                 | ⬜     |
 | 19    | Teacher student roster + student history             | ⬜     |
@@ -152,7 +152,7 @@ Last updated: 2026-06-06
 | Record & upload audio   | ✅     | expo-audio, signed URL upload                      |
 | Progress overview       | ✅     | Overall % bar + assigned/completed/revision stats  |
 | Notifications inbox     | ✅     | Unread highlight, mark read, mark all read         |
-| **Annotation viewer**   | 🔵     | Student can't see teacher marks on their attempt   |
+| **Annotation viewer**   | ✅     | View Feedback button → read-only canvas + callout list |
 | **Surah/Juz drill-down**| 🔵     | Progress screen has no tappable breakdown          |
 | **Attempt history**     | 🔵     | Only current attempt shown on assignment detail    |
 

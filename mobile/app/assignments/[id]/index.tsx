@@ -11,7 +11,7 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getStudentAssignment } from '@/api/assignments';
 import { getQuranPage } from '@/api/quran';
-import { getStudentSubmissions } from '@/api/submissions';
+import { getStudentSubmissions, getSubmissionAttempts } from '@/api/submissions';
 import type { AssignmentSummary, SubmissionRow } from '@/types/api';
 import { Button } from '@/components/ui/Button';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
@@ -43,6 +43,7 @@ export default function AssignmentDetailScreen() {
 
   const [assignment, setAssignment] = useState<AssignmentSummary | null>(null);
   const [submission, setSubmission] = useState<SubmissionRow | null>(null);
+  const [currentAttemptNumber, setCurrentAttemptNumber] = useState<number | null>(null);
   const [pageImageUrl, setPageImageUrl] = useState<string | null>(null);
   const [pageAspectRatio, setPageAspectRatio] = useState<number>(0.7);
   const [loading, setLoading] = useState(true);
@@ -62,6 +63,16 @@ export default function AssignmentDetailScreen() {
 
         const existing = allSubmissions.find((s) => s.assignmentId === asgn.id) ?? null;
         setSubmission(existing);
+
+        if (existing?.currentAttemptId) {
+          try {
+            const attempts = await getSubmissionAttempts(existing.id);
+            const current = attempts.find((a) => a.id === existing.currentAttemptId);
+            setCurrentAttemptNumber(current?.attemptNumber ?? null);
+          } catch {
+            // Non-fatal — attempt number is display-only
+          }
+        }
 
         if (asgn.pageNumber != null) {
           try {
@@ -92,6 +103,27 @@ export default function AssignmentDetailScreen() {
     !submission ||
     submission.status === 'needs_resubmission' ||
     submission.status === 'draft';
+
+  const canViewFeedback =
+    submission !== null &&
+    submission.currentAttemptId !== null &&
+    (submission.status === 'reviewed' ||
+      submission.status === 'completed' ||
+      submission.status === 'needs_resubmission');
+
+  const handleViewFeedback = () => {
+    if (!submission?.currentAttemptId) return;
+    router.push({
+      pathname: '/assignments/[id]/feedback/[attemptId]',
+      params: {
+        id,
+        attemptId: submission.currentAttemptId,
+        submissionId: submission.id,
+        pageNumber: assignment?.pageNumber?.toString() ?? '',
+        attemptNumber: currentAttemptNumber?.toString() ?? '',
+      },
+    });
+  };
 
   const handleRecord = () => {
     router.push({
@@ -180,6 +212,13 @@ export default function AssignmentDetailScreen() {
                 {SUBMISSION_STATUS_LABELS[submission.status] ?? submission.status}
               </Text>
             </View>
+          </View>
+        )}
+
+        {/* View Feedback button */}
+        {canViewFeedback && (
+          <View style={styles.section}>
+            <Button title="View Teacher Feedback" onPress={handleViewFeedback} />
           </View>
         )}
 

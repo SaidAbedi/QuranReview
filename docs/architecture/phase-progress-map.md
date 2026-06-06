@@ -3,6 +3,8 @@
 Tracks actual implementation status across backend, mobile, and remaining work.
 Last updated: 2026-06-06
 
+> **Rule:** Update this file every time a phase is completed — mark it ✅ in the Phase Status table, update the Mobile Screen Map, and move it out of the Remaining Phases section.
+
 ## Legend
 
 | Symbol | Meaning                                      |
@@ -33,6 +35,12 @@ Last updated: 2026-06-06
 | 13    | Student mobile flow                                  | ✅     |
 | 14    | Teacher mobile flow — queue, review, annotations     | ✅     |
 | 15    | Admin mobile flow — assign queue, relationships      | ✅     |
+| 16    | Student feedback viewer — see teacher annotations    | ⬜     |
+| 17    | Progress drill-down — surah & juz page-by-page       | ⬜     |
+| 18    | Attempt history on assignment detail                 | ⬜     |
+| 19    | Teacher student roster + student history             | ⬜     |
+| 20    | Push notifications — Expo token registration         | ⬜     |
+| 21    | Tap-to-word annotation (teacher review screen)       | ⬜     |
 
 ---
 
@@ -168,56 +176,137 @@ Last updated: 2026-06-06
 
 ---
 
-## Remaining Work — Prioritised
+## Remaining Phases — Detail
 
-### P1 — Core feedback loop (students can't see their feedback)
+### Phase 16 — Student Feedback Viewer ⬜
+**Goal:** Close the core feedback loop — students can see teacher annotations on their attempt.
 
-**Student annotation viewer**
-- New screen: `assignments/[id]/feedback/[attemptId].tsx`
-- Renders the Quran page image with teacher's annotation strokes overlaid
-- Uses existing `GET /annotations` (paginated) + `GET /annotation-markers` endpoints
-- Plays back teacher voice notes via `GET /media/signed-read-url`
-- Reuses the normalized-coordinate rendering logic already in the teacher review canvas
-- Entry point: "View Feedback" button on assignment detail when status = `reviewed` | `completed` | `needs_resubmission`
+**Mobile files to create:**
+- `mobile/app/assignments/[id]/feedback/[attemptId].tsx` — main viewer screen
+- `mobile/src/api/annotations.ts` — API calls for annotations + markers
 
-### P2 — Progress drill-down (backend exists, UI missing)
+**Mobile files to modify:**
+- `mobile/app/assignments/[id]/index.tsx` — add "View Feedback" button when status = `reviewed | completed | needs_resubmission`
 
-**Surah & Juz breakdown in progress screen**
-- Add tappable surah/juz cards to the existing progress screen
-- New screen: `progress/surah/[surahNumber].tsx` — page list with status dots
-- New screen: `progress/juz/[juzNumber].tsx` — same pattern
-- Calls `GET /api/student/progress/surahs/:n` and `/juz/:n`
+**What the screen does:**
+- Renders the Quran page image at full width (same as teacher review)
+- Fetches paginated annotations via `GET /api/submissions/:id/attempts/:attemptId/annotations`
+- Overlays each annotation stroke using normalized coordinates (0–1 → canvas pixels)
+- Shows mistake labels and note text as callouts on the canvas
+- Lists voice notes below the canvas; tapping fetches a signed URL and plays back audio
+- Read-only — no drawing tools
 
-### P3 — Attempt history (backend exists, UI missing)
+**Endpoints used (all exist):**
+- `GET /api/submissions/:id/attempts/:attemptId/annotations`
+- `GET /api/submissions/:id/attempts/:attemptId/annotation-markers`
+- `POST /api/media/signed-read-url` (for voice note playback)
+- `GET /api/quran/pages/:pageNumber` (page image + dimensions)
 
-**Attempt history on assignment detail**
-- Show a list of all past attempts (attempt #, date, status) below the current attempt
-- Calls existing `GET /submissions/:id/attempts`
-- Each row navigable to the feedback viewer for that specific attempt
+---
 
-### P4 — Teacher student list
+### Phase 17 — Progress Drill-Down ⬜
+**Goal:** Students can tap into any surah or juz to see page-by-page status.
 
-**Teacher's student roster**
-- New screen in `(teacher)/` — lists all active students assigned to this teacher
-- Shows student name, page progress summary, last submission date
-- Tapping opens a student's submission history
-- Requires one new backend endpoint: `GET /api/teacher/students` (list with basic progress)
+**Mobile files to create:**
+- `mobile/app/(tabs)/progress/surah/[surahNumber].tsx`
+- `mobile/app/(tabs)/progress/juz/[juzNumber].tsx`
+- `mobile/src/api/progress.ts` — add `getSurahProgress()` and `getJuzProgress()`
 
-### P5 — Push notifications
+**Mobile files to modify:**
+- `mobile/app/(tabs)/progress.tsx` — add surah/juz breakdown section with tappable cards (use snapshot data from existing `/api/student/progress` response)
 
-**Register Expo push tokens**
-- On app launch (post-login), call `POST /api/devices/register` with the Expo token
-- The `NotificationService.sendPushNotification()` method already exists — just needs tokens populated
-- Test with a real device (simulators don't receive push)
+**What changes:**
+- Progress screen gets two collapsible sections: "By Surah" and "By Juz"
+- Each card shows surah/juz name, pages completed / total, a mini progress bar
+- Tapping navigates to the detail screen showing every page as a status dot (not started / submitted / needs revision / completed)
 
-### P6 — Tap-to-word annotation (teacher)
+**Endpoints used (all exist):**
+- `GET /api/student/progress` (already called — `surahBreakdown` and `juzBreakdown` fields)
+- `GET /api/student/progress/surahs/:n`
+- `GET /api/student/progress/juz/:n`
 
-**Word selection in review screen**
-- Load `glyph-bounds.json` from the public bucket on review screen mount
-- Filter to the current page's word bounds
-- Map normalized coordinates back to canvas pixels
-- On tap: find the nearest word bounding box, create an annotation with `anchorType: 'word'`
-- Show a quick-label picker (mistake categories) after word selection
+---
+
+### Phase 18 — Attempt History ⬜
+**Goal:** Students can see all past attempts for an assignment, not just the current one.
+
+**Mobile files to modify:**
+- `mobile/app/assignments/[id]/index.tsx` — add attempt history list below current attempt card
+
+**What changes:**
+- After the current attempt status card, show a "Previous Attempts" section
+- Each row: "Attempt #N · date · status badge"
+- Tapping a completed/reviewed attempt navigates to the Phase 16 feedback viewer for that specific attempt
+- Calls `GET /api/submissions/:submissionId/attempts` (already exists)
+
+---
+
+### Phase 19 — Teacher Student Roster ⬜
+**Goal:** Teachers can see all their assigned students and each student's submission history.
+
+**Backend files to create/modify:**
+- `backend/src/routes/assignments.ts` — add `GET /api/teacher/students`
+- `backend/src/services/AssignmentService.ts` — add `getTeacherStudents()` method
+
+**What the new endpoint returns:**
+```typescript
+// GET /api/teacher/students
+[{
+  studentId, displayName, email,
+  pagesAssigned, pagesCompleted,      // from student_page_progress
+  lastSubmittedAt,                    // most recent submission.submitted_at
+  activeAssignmentCount,
+}]
+```
+
+**Mobile files to create:**
+- `mobile/app/(teacher)/students.tsx` — roster list screen
+- `mobile/app/(teacher)/students/[studentId].tsx` — student detail: their assignments + submission statuses
+
+**Mobile files to modify:**
+- `mobile/app/(teacher)/_layout.tsx` — add "Students" header button (alongside Sign Out)
+
+---
+
+### Phase 20 — Push Notifications ⬜
+**Goal:** Teachers get a lock-screen notification when a student submits; students get notified when teacher reviews.
+
+**Mobile files to modify:**
+- `mobile/app/_layout.tsx` — on post-login, request push permissions and call `POST /api/devices/register`
+- `mobile/src/api/notifications.ts` — add `registerDevice(token)` call
+
+**Backend — already done:**
+- `POST /api/devices/register` route exists
+- `NotificationService.sendPushNotification()` exists
+- DB table `push_device_tokens` exists
+
+**What's needed:**
+- Import `expo-notifications`, call `getExpoPushTokenAsync()` after login
+- Pass token to `POST /api/devices/register`
+- Backend `createNotification()` already calls `sendPushNotification()` — tokens just need to be in the DB
+
+**Note:** Push only works on physical devices, not simulators. Test on a real device.
+
+---
+
+### Phase 21 — Tap-to-Word Annotation ⬜
+**Goal:** Teachers can tap a specific Arabic word on the page to attach a mistake label, instead of only drawing freehand.
+
+**Mobile files to modify:**
+- `mobile/app/(teacher)/review/[submissionId].tsx` — add word-tap mode toggle + word hit detection
+
+**What changes:**
+- Add a "Word" mode button to the annotation toolbar (alongside existing freehand/text modes)
+- On mount: fetch `quran-page-images/mushaf-madani/glyph-bounds.json` from public URL, filter to current page
+- Scale normalized word bounds (0–1) to canvas pixel coordinates
+- In word mode: on tap, find the closest bounding box within a tolerance radius
+- Show a bottom sheet: mistake category picker → mistake option picker → optional text note
+- On confirm: POST annotation with `anchorType: 'word'`, `wordId`, `verseKey`, `mistakeType`, `mistakeOptionId`
+
+**Endpoints used (all exist):**
+- `POST /api/submissions/:id/attempts/:attemptId/annotations`
+- `GET /api/mistake-categories`
+- Glyph bounds JSON from public Supabase storage URL
 
 ---
 

@@ -4,6 +4,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -43,6 +44,7 @@ export default function AssignmentDetailScreen() {
   const [assignment, setAssignment] = useState<AssignmentSummary | null>(null);
   const [submission, setSubmission] = useState<SubmissionRow | null>(null);
   const [pageImageUrl, setPageImageUrl] = useState<string | null>(null);
+  const [pageAspectRatio, setPageAspectRatio] = useState<number>(0.7);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,13 +63,13 @@ export default function AssignmentDetailScreen() {
         const existing = allSubmissions.find((s) => s.assignmentId === asgn.id) ?? null;
         setSubmission(existing);
 
-        // Resolve page image: prefer assignment.imageUrl, fall back to quran proxy.
-        if (asgn.imageUrl) {
-          setPageImageUrl(asgn.imageUrl);
-        } else if (asgn.pageNumber != null) {
+        if (asgn.pageNumber != null) {
           try {
             const page = await getQuranPage(asgn.pageNumber);
             setPageImageUrl(page.imageUrl);
+            if (page.width && page.height) {
+              setPageAspectRatio(page.width / page.height);
+            }
           } catch {
             setPageImageUrl(null);
           }
@@ -107,7 +109,16 @@ export default function AssignmentDetailScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{
+          title,
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <Text style={styles.backButtonText}>‹ Back</Text>
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -125,12 +136,12 @@ export default function AssignmentDetailScreen() {
         {pageImageUrl ? (
           <Image
             source={{ uri: pageImageUrl }}
-            style={styles.pageImage}
+            style={[styles.pageImage, { aspectRatio: pageAspectRatio }]}
             contentFit="contain"
             transition={200}
           />
         ) : (
-          <View style={styles.pageImagePlaceholder}>
+          <View style={[styles.pageImagePlaceholder, { aspectRatio: pageAspectRatio }]}>
             <Text style={styles.placeholderText}>
               {assignment.pageNumber ? `Page ${assignment.pageNumber}` : 'No page image available'}
             </Text>
@@ -191,13 +202,11 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16 },
   pageImage: {
     width: '100%',
-    aspectRatio: 0.7,
     backgroundColor: '#E5E7EB',
     borderRadius: 8,
   },
   pageImagePlaceholder: {
     width: '100%',
-    aspectRatio: 0.7,
     backgroundColor: '#E5E7EB',
     borderRadius: 8,
     justifyContent: 'center',
@@ -222,4 +231,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   statusText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  backButton: { paddingHorizontal: 4, paddingVertical: 4 },
+  backButtonText: { color: '#fff', fontSize: 16 },
 });

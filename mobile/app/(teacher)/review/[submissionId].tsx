@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getAnnotations, batchSaveAnnotations } from '@/api/annotations';
+import { getQuranPage } from '@/api/quran';
 import { completeReview, getMistakeCategories, getAttemptHistory } from '@/api/teacher';
 import AudioPlayerBar from '@/components/AudioPlayerBar';
 import AnnotationCanvas from '@/components/AnnotationCanvas';
@@ -72,6 +73,10 @@ export default function ReviewDetailScreen() {
   const [attemptHistory, setAttemptHistory] = useState<AttemptRow[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [canvasLayout, setCanvasLayout] = useState<{ width: number; height: number } | null>(null);
+  const [resolvedPageImageUrl, setResolvedPageImageUrl] = useState<string | null>(
+    pageImageUrl ?? null,
+  );
+  const [pageAspectRatio, setPageAspectRatio] = useState<number>(0.7);
   const saveLock = useRef(false);
 
   const loadAnnotations = useCallback(async () => {
@@ -90,7 +95,15 @@ export default function ReviewDetailScreen() {
     loadAnnotations();
     getMistakeCategories().then(setCategories).catch(() => {});
     getAttemptHistory(submissionId).then(setAttemptHistory).catch(() => {});
-  }, [loadAnnotations, submissionId]);
+    if (pageNumber) {
+      getQuranPage(parseInt(pageNumber, 10))
+        .then((page) => {
+          if (page.imageUrl) setResolvedPageImageUrl(page.imageUrl);
+          if (page.width && page.height) setPageAspectRatio(page.width / page.height);
+        })
+        .catch(() => {});
+    }
+  }, [loadAnnotations, submissionId, pageNumber]);
 
   const handleStrokeComplete = (points: AnnotationPoint[]) => {
     setPendingPoints((prev) => [...prev, points]);
@@ -213,7 +226,7 @@ export default function ReviewDetailScreen() {
 
         {/* Page image + annotation canvas */}
         <View
-          style={styles.canvasWrapper}
+          style={[styles.canvasWrapper, { aspectRatio: pageAspectRatio }]}
           onLayout={(e) =>
             setCanvasLayout({
               width: e.nativeEvent.layout.width,
@@ -221,9 +234,9 @@ export default function ReviewDetailScreen() {
             })
           }
         >
-          {pageImageUrl ? (
+          {resolvedPageImageUrl ? (
             <Image
-              source={{ uri: pageImageUrl }}
+              source={{ uri: resolvedPageImageUrl }}
               style={StyleSheet.absoluteFill}
               resizeMode="contain"
             />
@@ -407,7 +420,6 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
   canvasWrapper: {
     alignSelf: 'stretch',
-    aspectRatio: 0.7,
     backgroundColor: '#fff',
     borderRadius: 8,
     overflow: 'hidden',

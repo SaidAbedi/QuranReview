@@ -201,6 +201,8 @@ export interface QuranPageSummary {
   pageNumber: number;
   mushafId?: string;
   imageUrl: string | null;
+  width: number | null;
+  height: number | null;
 }
 
 // ── Notifications ────────────────────────────────────────────────────────────

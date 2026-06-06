@@ -17,6 +17,7 @@ export interface SignedReadUrlResult {
 
 const BUCKET_STUDENT_RECORDINGS = 'student-recordings';
 const BUCKET_TEACHER_VOICE_NOTES = 'teacher-voice-notes';
+export const BUCKET_QURAN_PAGE_IMAGES = 'quran-page-images';
 
 // Signed upload URL is valid for 10 minutes — enough for recording + upload.
 const UPLOAD_EXPIRES_IN_SECONDS = 600;
@@ -42,6 +43,7 @@ export class MediaService {
       // Verify buckets exist without creating them.
       await this.assertBucketExists(BUCKET_STUDENT_RECORDINGS);
       await this.assertBucketExists(BUCKET_TEACHER_VOICE_NOTES);
+      await this.assertBucketExists(BUCKET_QURAN_PAGE_IMAGES);
       this.bucketsReady = true;
       return;
     }
@@ -49,10 +51,17 @@ export class MediaService {
     await this.ensureBucket(BUCKET_STUDENT_RECORDINGS, {
       allowedMimeTypes: AUDIO_MIME_TYPES,
       fileSizeLimit: 52428800, // 50 MB
+      isPublic: false,
     });
     await this.ensureBucket(BUCKET_TEACHER_VOICE_NOTES, {
       allowedMimeTypes: AUDIO_MIME_TYPES,
       fileSizeLimit: 20971520, // 20 MB
+      isPublic: false,
+    });
+    await this.ensureBucket(BUCKET_QURAN_PAGE_IMAGES, {
+      allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'application/json'],
+      fileSizeLimit: 10485760, // 10 MB per image
+      isPublic: true,
     });
     this.bucketsReady = true;
   }
@@ -189,13 +198,13 @@ export class MediaService {
 
   private async ensureBucket(
     name: string,
-    opts: { allowedMimeTypes: string[]; fileSizeLimit: number },
+    opts: { allowedMimeTypes: string[]; fileSizeLimit: number; isPublic?: boolean },
   ): Promise<void> {
     const { data: existing } = await supabaseAdmin.storage.getBucket(name);
     if (existing) return;
 
     const { error } = await supabaseAdmin.storage.createBucket(name, {
-      public: false,
+      public: opts.isPublic ?? false,
       allowedMimeTypes: opts.allowedMimeTypes,
       fileSizeLimit: opts.fileSizeLimit,
     });

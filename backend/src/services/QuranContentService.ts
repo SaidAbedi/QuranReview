@@ -14,6 +14,8 @@ export interface QuranPageSummary {
   pageNumber: number;
   mushafId: string;
   imageUrl: string | null;
+  width: number | null;
+  height: number | null;
 }
 
 export interface PageSurahMapping {
@@ -28,6 +30,7 @@ export interface PageSurahMapping {
 
 export interface QuranPageContent extends QuranPageSummary {
   mappings: PageSurahMapping[];
+  verseImages: string[];
   words?: QfWord[];
 }
 
@@ -166,6 +169,7 @@ class QfApiClient {
     for (const [k, v] of Object.entries(query)) {
       url.searchParams.set(k, String(v));
     }
+    console.log(`[QF] ${isRetry ? 'retry ' : ''}GET ${url.toString()}`);
     const response = await fetch(url.toString(), {
       headers: {
         'x-auth-token': token,
@@ -173,6 +177,7 @@ class QfApiClient {
         Accept: 'application/json',
       },
     });
+    console.log(`[QF] response status: ${response.status}`);
     if (!response.ok) {
       if (response.status === 401 && !isRetry) {
         this.tokens.invalidate();
@@ -198,13 +203,14 @@ export class QuranContentService {
     env.QURAN_FOUNDATION_CONTENT_BASE_URL,
   );
 
-  // Returns page metadata (id, imageUrl). Creates a minimal DB row on cache miss.
+  // Returns page metadata (id, imageUrl, width, height). Creates a minimal DB row on cache miss.
   // Does NOT call Quran.Foundation — use getPageContent for full data.
-  // Called by assignment creation to resolve a page number to its DB UUID.
+  // Called by assignment creation to resolve a page number to its DB UUID,
+  // and by GET /api/quran/pages/:pageNumber on the mobile-facing route.
   async getPage(pageNumber: number): Promise<QuranPageSummary> {
     const { data: cached } = await supabaseAdmin
       .from('quran_pages')
-      .select('id, page_number, mushaf_id, image_url')
+      .select('id, page_number, mushaf_id, storage_path, image_url, width, height')
       .eq('provider', 'quran_foundation')
       .eq('provider_mushaf_id', this.mushafId)
       .eq('page_number', pageNumber)
@@ -220,7 +226,7 @@ export class QuranContentService {
         mushaf_id: 'qcf_v2',
         page_number: pageNumber,
       })
-      .select('id, page_number, mushaf_id, image_url')
+      .select('id, page_number, mushaf_id, storage_path, image_url, width, height')
       .single();
 
     if (error) throw new AppError(500, `Failed to cache Quran page ${pageNumber}`);
@@ -237,7 +243,7 @@ export class QuranContentService {
         first_verse_key, last_verse_key,
         starts_at_ayah, ends_at_ayah,
         verses_count, source_payload,
-        quran_pages ( id, mushaf_id, image_url )
+        quran_pages ( id, mushaf_id, storage_path, image_url, width, height )
       `)
       .eq('page_number', pageNumber)
       .eq('provider_mushaf_id', this.mushafId)
@@ -303,12 +309,23 @@ export class QuranContentService {
   // ---- Private helpers ----------------------------------------------------
 
   private toPageSummary(row: Record<string, unknown>): QuranPageSummary {
+    const storagePath = row.storage_path as string | null;
+    const imageUrl = storagePath
+      ? `${env.SUPABASE_URL}/storage/v1/object/public/quran-page-images/${storagePath}`
+      : ((row.image_url as string | null) ?? null);
     return {
       id: row.id as string,
       pageNumber: row.page_number as number,
       mushafId: row.mushaf_id as string,
-      imageUrl: (row.image_url as string | null) ?? null,
+      imageUrl,
+      width: (row.width as number | null) ?? null,
+      height: (row.height as number | null) ?? null,
     };
+  }
+
+  private normalizeImageUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    return url.startsWith('//') ? `https:${url}` : url;
   }
 
   private buildContentFromCache(
@@ -327,11 +344,26 @@ export class QuranContentService {
         })
       : [];
 
+    const verseImages = mappings.flatMap((m) => {
+      const payload = m.source_payload as { verses?: Array<{ image_url?: string }> };
+      return (payload?.verses ?? [])
+        .map((v) => this.normalizeImageUrl(v.image_url))
+        .filter((url): url is string => url !== null);
+    });
+
+    const storagePath = pageRow?.storage_path as string | null;
+    const imageUrl = storagePath
+      ? `${env.SUPABASE_URL}/storage/v1/object/public/quran-page-images/${storagePath}`
+      : ((pageRow?.image_url as string | null) ?? null);
+
     return {
       id: (pageRow?.id as string) ?? '',
       pageNumber,
       mushafId: (pageRow?.mushaf_id as string) ?? 'qcf_v2',
-      imageUrl: (pageRow?.image_url as string | null) ?? null,
+      imageUrl,
+      width: (pageRow?.width as number | null) ?? null,
+      height: (pageRow?.height as number | null) ?? null,
+      verseImages,
       mappings: mappings.map((m) => ({
         surahNumber: m.surah_number as number,
         juzNumber: m.juz_number as number,
@@ -372,7 +404,7 @@ export class QuranContentService {
     const { data: pageRow, error: pageError } = await supabaseAdmin
       .from('quran_pages')
       .upsert(upsertPageData, { onConflict: 'provider,provider_mushaf_id,page_number' })
-      .select('id, page_number, mushaf_id, image_url')
+      .select('id, page_number, mushaf_id, storage_path, image_url, width, height')
       .single();
 
     if (pageError) throw new AppError(500, `Failed to cache page ${pageNumber}`);
@@ -422,11 +454,23 @@ export class QuranContentService {
       });
     }
 
+    const verseImages = data.verses
+      .map((v) => this.normalizeImageUrl(v.image_url))
+      .filter((url): url is string => url !== null);
+
+    const fetchedStoragePath = pageRow.storage_path as string | null;
+    const fetchedImageUrl = fetchedStoragePath
+      ? `${env.SUPABASE_URL}/storage/v1/object/public/quran-page-images/${fetchedStoragePath}`
+      : (pageRow.image_url as string | null);
+
     return {
       id: pageRow.id,
       pageNumber,
       mushafId: pageRow.mushaf_id,
-      imageUrl: pageRow.image_url,
+      imageUrl: fetchedImageUrl,
+      width: (pageRow.width as number | null) ?? null,
+      height: (pageRow.height as number | null) ?? null,
+      verseImages,
       mappings,
       ...(includeWords
         ? { words: data.verses.flatMap((v) => (v.words ?? []).map(this.normalizeWord)) }

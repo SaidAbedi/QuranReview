@@ -35,6 +35,9 @@ router.get('/quran/pages/lookup', authenticate, async (req, res, next) => {
 });
 
 // GET /api/quran/pages/:pageNumber
+// Returns page metadata (imageUrl from quran-page-images storage, width, height).
+// DB-only — does not call Quran.Foundation API. Images are pre-generated via
+// quran.com-images Docker and uploaded with backend/scripts/upload-quran-pages.ts.
 router.get('/quran/pages/:pageNumber', authenticate, async (req, res, next) => {
   try {
     const pageNumber = PageNumberSchema.parse(req.params.pageNumber);

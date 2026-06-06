@@ -1,4 +1,4 @@
-import { supabaseAdmin, requirePgPool } from '../db/client';
+import { supabaseAdmin } from '../db/client';
 import { AppError, AssignmentRequestStatus } from '../types';
 import { notificationService } from './NotificationService';
 
@@ -94,100 +94,97 @@ function toRelationshipRow(r: Record<string, unknown>): TeacherStudentRelationsh
 export class AdminAssignmentService {
   // Returns students whose most-recent assignment_request has status = 'pending_assignment'.
   async getUnassignedStudents(): Promise<UnassignedStudentRow[]> {
-    const pool = requirePgPool();
-    const { rows } = await pool.query<{
-      id: string;
-      email: string;
-      display_name: string;
-      request_id: string;
-      request_status: string;
-      created_at: string;
-    }>(`
-      SELECT
-        u.id,
-        u.email,
-        u.display_name,
-        sar.id          AS request_id,
-        sar.status      AS request_status,
-        sar.created_at
-      FROM student_assignment_requests sar
-      JOIN users u ON u.id = sar.student_id
-      WHERE sar.status = 'pending_assignment'
-      ORDER BY sar.created_at ASC
-    `);
+    const { data: requests, error } = await supabaseAdmin
+      .from('student_assignment_requests')
+      .select('id, student_id, status, created_at')
+      .eq('status', 'pending_assignment')
+      .order('created_at', { ascending: true });
 
-    return rows.map((r) => ({
-      id: r.id,
-      email: r.email,
-      displayName: r.display_name,
-      requestId: r.request_id,
-      requestStatus: r.request_status as AssignmentRequestStatus,
-      createdAt: r.created_at,
-    }));
+    if (error) throw new AppError(500, 'Failed to fetch unassigned students');
+    if (!requests || requests.length === 0) return [];
+
+    const studentIds = (requests as Record<string, unknown>[]).map((r) => r.student_id as string);
+
+    const { data: users } = await supabaseAdmin
+      .from('users')
+      .select('id, email, display_name')
+      .in('id', studentIds);
+
+    const userMap = new Map(
+      (users ?? []).map((u) => {
+        const row = u as Record<string, unknown>;
+        return [row.id as string, row];
+      }),
+    );
+
+    return (requests as Record<string, unknown>[]).map((r) => {
+      const user = userMap.get(r.student_id as string);
+      return {
+        id: r.student_id as string,
+        email: (user?.email as string) ?? '',
+        displayName: (user?.display_name as string) ?? '',
+        requestId: r.id as string,
+        requestStatus: r.status as AssignmentRequestStatus,
+        createdAt: r.created_at as string,
+      };
+    });
   }
 
   // Returns all assignment requests, optionally filtered by status.
   async getAssignmentRequests(
     status?: AssignmentRequestStatus,
   ): Promise<AssignmentRequestRow[]> {
-    const pool = requirePgPool();
+    let query = supabaseAdmin
+      .from('student_assignment_requests')
+      .select('id, student_id, requested_teacher_id, assigned_teacher_id, assigned_by, status, notes, created_at, assigned_at')
+      .order('created_at', { ascending: true });
 
-    const conditions = status ? 'WHERE sar.status = $1' : '';
-    const params = status ? [status] : [];
+    if (status) query = query.eq('status', status);
 
-    const { rows } = await pool.query<{
-      id: string;
-      student_id: string;
-      student_email: string;
-      student_display_name: string;
-      requested_teacher_id: string | null;
-      assigned_teacher_id: string | null;
-      assigned_by: string | null;
-      status: string;
-      notes: string | null;
-      created_at: string;
-      assigned_at: string | null;
-    }>(`
-      SELECT
-        sar.id,
-        sar.student_id,
-        u.email         AS student_email,
-        u.display_name  AS student_display_name,
-        sar.requested_teacher_id,
-        sar.assigned_teacher_id,
-        sar.assigned_by,
-        sar.status,
-        sar.notes,
-        sar.created_at,
-        sar.assigned_at
-      FROM student_assignment_requests sar
-      JOIN users u ON u.id = sar.student_id
-      ${conditions}
-      ORDER BY sar.created_at ASC
-    `, params);
+    const { data: requests, error } = await query;
+    if (error) throw new AppError(500, 'Failed to fetch assignment requests');
+    if (!requests || requests.length === 0) return [];
 
-    return rows.map((r) => ({
-      id: r.id,
-      studentId: r.student_id,
-      studentEmail: r.student_email,
-      studentDisplayName: r.student_display_name,
-      requestedTeacherId: r.requested_teacher_id ?? null,
-      assignedTeacherId: r.assigned_teacher_id ?? null,
-      assignedBy: r.assigned_by ?? null,
-      status: r.status as AssignmentRequestStatus,
-      notes: r.notes ?? null,
-      createdAt: r.created_at,
-      assignedAt: r.assigned_at ?? null,
-    }));
+    const studentIds = [...new Set(
+      (requests as Record<string, unknown>[]).map((r) => r.student_id as string),
+    )];
+
+    const { data: users } = await supabaseAdmin
+      .from('users')
+      .select('id, email, display_name')
+      .in('id', studentIds);
+
+    const userMap = new Map(
+      (users ?? []).map((u) => {
+        const row = u as Record<string, unknown>;
+        return [row.id as string, row];
+      }),
+    );
+
+    return (requests as Record<string, unknown>[]).map((r) => {
+      const user = userMap.get(r.student_id as string);
+      return {
+        id: r.id as string,
+        studentId: r.student_id as string,
+        studentEmail: (user?.email as string) ?? '',
+        studentDisplayName: (user?.display_name as string) ?? '',
+        requestedTeacherId: (r.requested_teacher_id as string | null) ?? null,
+        assignedTeacherId: (r.assigned_teacher_id as string | null) ?? null,
+        assignedBy: (r.assigned_by as string | null) ?? null,
+        status: r.status as AssignmentRequestStatus,
+        notes: (r.notes as string | null) ?? null,
+        createdAt: r.created_at as string,
+        assignedAt: (r.assigned_at as string | null) ?? null,
+      };
+    });
   }
 
-  // Assigns a teacher to a pending student. Runs atomically:
-  //   1. Marks assignment_request → 'assigned'
-  //   2. Upserts teacher_student_relationships → status 'active'
-  //   3. Updates student user_profiles.onboarding_status → 'active'
-  // All request-state guards run inside the transaction after the FOR UPDATE lock
-  // to eliminate the race window between pre-flight checks and the UPDATE.
-  // Notifications (student + teacher) are created after the COMMIT — non-blocking.
+  // Assigns a teacher to a pending student. Sequential operations:
+  //   1. Validates teacher role (immutable — safe pre-flight)
+  //   2. Validates request status, updates request → 'assigned'
+  //   3. Upserts teacher_student_relationships → status 'active'
+  //   4. Updates student user_profiles.onboarding_status → 'active'
+  // Notifications (student + teacher) are created after — non-blocking.
   async assignTeacher(
     requestId: string,
     teacherId: string,
@@ -206,78 +203,56 @@ export class AdminAssignmentService {
       throw new AppError(400, 'Specified user is not a teacher');
     }
 
-    // ── Transaction ───────────────────────────────────────────────────────────
-    const pool = requirePgPool();
-    const client = await pool.connect();
-    let updatedRequest: Record<string, unknown>;
-    let studentId!: string;
+    // ── Validate and update request ───────────────────────────────────────────
+    const { data: existing } = await supabaseAdmin
+      .from('student_assignment_requests')
+      .select('id, student_id, status')
+      .eq('id', requestId)
+      .maybeSingle();
 
-    try {
-      await client.query('BEGIN');
+    if (!existing) throw new AppError(404, 'Assignment request not found');
 
-      // Lock the row first — all request-state checks happen here so they are
-      // consistent with the subsequent UPDATE (no pre-flight/lock race window).
-      const { rows: lockRows } = await client.query<{
-        id: string;
-        student_id: string;
-        status: string;
-      }>(
-        'SELECT id, student_id, status FROM student_assignment_requests WHERE id = $1 FOR UPDATE',
-        [requestId],
-      );
-
-      if (lockRows.length === 0) throw new AppError(404, 'Assignment request not found');
-
-      const locked = lockRows[0];
-      if (locked.status === 'assigned') {
-        throw new AppError(409, 'Student is already assigned to a teacher');
-      }
-      if (locked.status !== 'pending_assignment') {
-        throw new AppError(409, `Request has status "${locked.status}" and cannot be assigned`);
-      }
-
-      studentId = locked.student_id;
-
-      // 1. Update assignment request
-      const { rows: [ar] } = await client.query<Record<string, unknown>>(`
-        UPDATE student_assignment_requests
-        SET
-          status              = 'assigned',
-          assigned_teacher_id = $1,
-          assigned_by         = $2,
-          assigned_at         = now(),
-          updated_at          = now()
-        WHERE id = $3
-        RETURNING *
-      `, [teacherId, assignedBy, requestId]);
-
-      if (!ar) throw new AppError(500, 'Failed to update assignment request');
-      updatedRequest = ar;
-
-      // 2. Upsert teacher_student_relationships — reactivates if previously deactivated
-      await client.query(`
-        INSERT INTO teacher_student_relationships (teacher_id, student_id, status)
-        VALUES ($1, $2, 'active')
-        ON CONFLICT (teacher_id, student_id) DO UPDATE SET status = 'active'
-      `, [teacherId, studentId]);
-
-      // 3. Mark student profile as active
-      await client.query(`
-        UPDATE user_profiles
-        SET onboarding_status = 'active', updated_at = now()
-        WHERE user_id = $1
-      `, [studentId]);
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err instanceof AppError ? err : new AppError(500, 'Failed to assign teacher');
-    } finally {
-      client.release();
+    const req = existing as Record<string, unknown>;
+    if (req.status === 'assigned') {
+      throw new AppError(409, 'Student is already assigned to a teacher');
+    }
+    if (req.status !== 'pending_assignment') {
+      throw new AppError(409, `Request has status "${req.status}" and cannot be assigned`);
     }
 
-    // ── Notifications (fire-and-forget after COMMIT) ───────────────────────
-    // Fetch student info for notification body and response shape
+    const studentId = req.student_id as string;
+
+    // 1. Update assignment request
+    const { data: updatedReq, error: reqError } = await supabaseAdmin
+      .from('student_assignment_requests')
+      .update({
+        status: 'assigned',
+        assigned_teacher_id: teacherId,
+        assigned_by: assignedBy,
+        assigned_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', requestId)
+      .select('*')
+      .single();
+
+    if (reqError || !updatedReq) throw new AppError(500, 'Failed to update assignment request');
+
+    // 2. Upsert teacher_student_relationships — reactivates if previously deactivated
+    await supabaseAdmin
+      .from('teacher_student_relationships')
+      .upsert(
+        { teacher_id: teacherId, student_id: studentId, status: 'active' },
+        { onConflict: 'teacher_id,student_id' },
+      );
+
+    // 3. Mark student profile as active
+    await supabaseAdmin
+      .from('user_profiles')
+      .update({ onboarding_status: 'active', updated_at: new Date().toISOString() })
+      .eq('user_id', studentId);
+
+    // ── Notifications (fire-and-forget) ───────────────────────────────────────
     const { data: studentInfo } = await supabaseAdmin
       .from('users')
       .select('email, display_name')
@@ -308,7 +283,7 @@ export class AdminAssignmentService {
     });
 
     return toAssignmentRequestRow(
-      updatedRequest!,
+      updatedReq as Record<string, unknown>,
       (si.email as string) ?? '',
       (si.display_name as string) ?? '',
     );
@@ -379,75 +354,81 @@ export class AdminAssignmentService {
 
   // Returns all users with role='teacher', including their current student load.
   async getTeachers(): Promise<TeacherOptionRow[]> {
-    const pool = requirePgPool();
-    const { rows } = await pool.query<{
-      id: string;
-      display_name: string;
-      email: string;
-      current_load: number;
-      capacity: number | null;
-    }>(`
-      SELECT
-        u.id,
-        u.display_name,
-        u.email,
-        COALESCE(up.teacher_current_load, 0)  AS current_load,
-        up.teacher_capacity                    AS capacity
-      FROM users u
-      LEFT JOIN user_profiles up ON up.user_id = u.id
-      WHERE u.role = 'teacher'
-      ORDER BY u.display_name ASC
-    `);
+    const { data: teachers, error } = await supabaseAdmin
+      .from('users')
+      .select('id, display_name, email')
+      .eq('role', 'teacher')
+      .order('display_name', { ascending: true });
 
-    return rows.map((r) => ({
-      id: r.id,
-      displayName: r.display_name,
-      email: r.email,
-      currentLoad: r.current_load,
-      capacity: r.capacity,
-    }));
+    if (error) throw new AppError(500, 'Failed to fetch teachers');
+    if (!teachers || teachers.length === 0) return [];
+
+    const teacherIds = (teachers as Record<string, unknown>[]).map((t) => t.id as string);
+
+    const { data: profiles } = await supabaseAdmin
+      .from('user_profiles')
+      .select('user_id, teacher_current_load, teacher_capacity')
+      .in('user_id', teacherIds);
+
+    const profileMap = new Map(
+      (profiles ?? []).map((p) => {
+        const row = p as Record<string, unknown>;
+        return [row.user_id as string, row];
+      }),
+    );
+
+    return (teachers as Record<string, unknown>[]).map((t) => {
+      const profile = profileMap.get(t.id as string);
+      return {
+        id: t.id as string,
+        displayName: (t.display_name as string) ?? '',
+        email: (t.email as string) ?? '',
+        currentLoad: profile ? (Number(profile.teacher_current_load) || 0) : 0,
+        capacity: profile ? ((profile.teacher_capacity as number | null) ?? null) : null,
+      };
+    });
   }
 
   // Returns all teacher-student relationships enriched with display names.
   async getRelationships(
     status?: 'active' | 'inactive' | 'pending',
   ): Promise<EnrichedRelationshipRow[]> {
-    const pool = requirePgPool();
-    const conditions = status ? 'WHERE tsr.status = $1' : '';
-    const params = status ? [status] : [];
+    let query = supabaseAdmin
+      .from('teacher_student_relationships')
+      .select('id, teacher_id, student_id, status, created_at')
+      .order('created_at', { ascending: false });
 
-    const { rows } = await pool.query<{
-      id: string;
-      teacher_id: string;
-      teacher_name: string;
-      student_id: string;
-      student_name: string;
-      status: string;
-      created_at: string;
-    }>(`
-      SELECT
-        tsr.id,
-        tsr.teacher_id,
-        t.display_name  AS teacher_name,
-        tsr.student_id,
-        s.display_name  AS student_name,
-        tsr.status,
-        tsr.created_at
-      FROM teacher_student_relationships tsr
-      JOIN users t ON t.id = tsr.teacher_id
-      JOIN users s ON s.id = tsr.student_id
-      ${conditions}
-      ORDER BY tsr.created_at DESC
-    `, params);
+    if (status) query = query.eq('status', status);
 
-    return rows.map((r) => ({
-      id: r.id,
-      teacherId: r.teacher_id,
-      teacherName: r.teacher_name,
-      studentId: r.student_id,
-      studentName: r.student_name,
+    const { data: relationships, error } = await query;
+    if (error) throw new AppError(500, 'Failed to fetch relationships');
+    if (!relationships || relationships.length === 0) return [];
+
+    const relList = relationships as Record<string, unknown>[];
+    const teacherIds = [...new Set(relList.map((r) => r.teacher_id as string))];
+    const studentIds = [...new Set(relList.map((r) => r.student_id as string))];
+    const allIds = [...new Set([...teacherIds, ...studentIds])];
+
+    const { data: users } = await supabaseAdmin
+      .from('users')
+      .select('id, display_name')
+      .in('id', allIds);
+
+    const nameMap = new Map(
+      (users ?? []).map((u) => {
+        const row = u as Record<string, unknown>;
+        return [row.id as string, (row.display_name as string | null) ?? ''];
+      }),
+    );
+
+    return relList.map((r) => ({
+      id: r.id as string,
+      teacherId: r.teacher_id as string,
+      teacherName: nameMap.get(r.teacher_id as string) ?? '',
+      studentId: r.student_id as string,
+      studentName: nameMap.get(r.student_id as string) ?? '',
       status: r.status as EnrichedRelationshipRow['status'],
-      createdAt: r.created_at,
+      createdAt: r.created_at as string,
     }));
   }
 }

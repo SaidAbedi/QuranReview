@@ -1,4 +1,4 @@
-import { supabaseAdmin, requirePgPool } from '../db/client';
+import { supabaseAdmin } from '../db/client';
 import { AppError, UserRole } from '../types';
 import { quranContentService } from './QuranContentService';
 
@@ -184,15 +184,35 @@ export class AssignmentService {
       }),
     );
 
-    // Fetch submissions + current attempt number via a raw JOIN query.
-    const pool = requirePgPool();
-    const { rows: submissionRows } = await pool.query<Record<string, unknown>>(`
-      SELECT s.id, s.assignment_id, s.current_attempt_id, s.status, s.submitted_at,
-             sa.attempt_number
-      FROM submissions s
-      LEFT JOIN submission_attempts sa ON sa.id = s.current_attempt_id
-      WHERE s.assignment_id = ANY($1)
-    `, [assignmentIds]);
+    // Fetch submissions, then look up attempt_number for each current_attempt_id.
+    const { data: subs } = await supabaseAdmin
+      .from('submissions')
+      .select('id, assignment_id, current_attempt_id, status, submitted_at')
+      .in('assignment_id', assignmentIds);
+
+    const subsList = (subs ?? []) as Record<string, unknown>[];
+    const currentAttemptIds = subsList
+      .map((s) => s.current_attempt_id as string | null)
+      .filter((id): id is string => id !== null);
+
+    let attemptNumMap = new Map<string, number>();
+    if (currentAttemptIds.length > 0) {
+      const { data: attempts } = await supabaseAdmin
+        .from('submission_attempts')
+        .select('id, attempt_number')
+        .in('id', currentAttemptIds);
+      attemptNumMap = new Map(
+        (attempts ?? []).map((a) => {
+          const row = a as Record<string, unknown>;
+          return [row.id as string, row.attempt_number as number];
+        }),
+      );
+    }
+
+    const submissionRows = subsList.map((s) => {
+      const caid = s.current_attempt_id as string | null;
+      return { ...s, attempt_number: caid ? (attemptNumMap.get(caid) ?? null) : null } as Record<string, unknown>;
+    });
 
     const subByAssignment = new Map(
       submissionRows.map((r) => [r.assignment_id as string, r]),

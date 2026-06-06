@@ -1,4 +1,4 @@
-import { supabaseAdmin, requirePgPool } from '../db/client';
+import { supabaseAdmin } from '../db/client';
 import { AppError, SubmissionStatus, UserRole } from '../types';
 import { mediaService, MediaService } from './MediaService';
 
@@ -79,79 +79,77 @@ export class SubmissionService {
 
     if (existing) throw new AppError(409, 'Submission already exists for this assignment — use POST /attempts to add another attempt');
 
-    const pool = requirePgPool();
-    const client = await pool.connect();
+    // 1. Insert submission (current_attempt_id nullable on insert per blueprint §22.10)
+    const { data: sub, error: subError } = await supabaseAdmin
+      .from('submissions')
+      .insert({
+        assignment_id: input.assignmentId,
+        student_id: studentId,
+        quran_page_id: (assignment as Record<string, unknown>).quran_page_id,
+        status: 'submitted',
+      })
+      .select('*')
+      .single();
 
-    try {
-      await client.query('BEGIN');
+    if (subError || !sub) throw new AppError(500, 'Failed to create submission');
+    const subRow = sub as Record<string, unknown>;
 
-      // 1. Insert submission (current_attempt_id nullable on insert per blueprint §22.10)
-      const { rows: [sub] } = await client.query<Record<string, unknown>>(`
-        INSERT INTO submissions (assignment_id, student_id, quran_page_id, status)
-        VALUES ($1, $2, $3, 'submitted')
-        RETURNING *
-      `, [input.assignmentId, studentId, assignment.quran_page_id]);
+    // 2. Build deterministic storage key now that submissionId is known (blueprint §13.1)
+    const storageKey = MediaService.buildStudentRecordingKey(
+      studentId,
+      subRow.id as string,
+      1,
+    );
 
-      // 2. Build deterministic storage key now that submissionId is known (blueprint §13.1)
-      const storageKey = MediaService.buildStudentRecordingKey(
-        studentId,
-        sub.id as string,
-        1,
-      );
+    // 3. Insert first attempt with the stable key
+    const { data: att, error: attError } = await supabaseAdmin
+      .from('submission_attempts')
+      .insert({
+        submission_id: subRow.id,
+        student_id: studentId,
+        quran_page_id: (assignment as Record<string, unknown>).quran_page_id,
+        attempt_number: 1,
+        recording_storage_key: storageKey,
+        recording_duration_ms: input.recordingDurationMs ?? null,
+        original_file_name: input.originalFileName ?? null,
+        content_type: input.contentType ?? null,
+        size_bytes: input.sizeBytes ?? null,
+        status: 'submitted',
+      })
+      .select('*')
+      .single();
 
-      // 3. Insert first attempt with the stable key
-      const { rows: [attempt] } = await client.query<Record<string, unknown>>(`
-        INSERT INTO submission_attempts (
-          submission_id, student_id, quran_page_id, attempt_number,
-          recording_storage_key, recording_duration_ms, original_file_name,
-          content_type, size_bytes, status
-        ) VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, 'submitted')
-        RETURNING *
-      `, [
-        sub.id, studentId, assignment.quran_page_id,
-        storageKey,
-        input.recordingDurationMs ?? null,
-        input.originalFileName ?? null,
-        input.contentType ?? null,
-        input.sizeBytes ?? null,
-      ]);
+    if (attError || !att) throw new AppError(500, 'Failed to create attempt');
+    const attRow = att as Record<string, unknown>;
 
-      // 4. Close the circular reference: set current_attempt_id
-      await client.query(`
-        UPDATE submissions
-        SET current_attempt_id = $1, updated_at = now()
-        WHERE id = $2
-      `, [attempt.id, sub.id]);
+    // 4. Close the circular reference: set current_attempt_id
+    await supabaseAdmin
+      .from('submissions')
+      .update({ current_attempt_id: attRow.id, updated_at: new Date().toISOString() })
+      .eq('id', subRow.id);
 
-      // 5. Update assignment status to reflect submission
-      await client.query(`
-        UPDATE assignments SET status = 'submitted', updated_at = now() WHERE id = $1
-      `, [input.assignmentId]);
+    // 5. Update assignment status to reflect submission
+    await supabaseAdmin
+      .from('assignments')
+      .update({ status: 'submitted', updated_at: new Date().toISOString() })
+      .eq('id', input.assignmentId);
 
-      await client.query('COMMIT');
+    // Generate signed upload URL — key is now stable in DB
+    const uploadResult = await mediaService.getSignedUploadUrl(
+      studentId,
+      'student_recording',
+      input.contentType ?? 'audio/m4a',
+      subRow.id as string,
+      1,
+    );
 
-      // Generate signed upload URL after commit — key is now stable in DB
-      const uploadResult = await mediaService.getSignedUploadUrl(
-        studentId,
-        'student_recording',
-        input.contentType ?? 'audio/m4a',
-        sub.id as string,
-        1,
-      );
-
-      return {
-        submission: toSubmissionRow({ ...sub, current_attempt_id: attempt.id }),
-        attempt: toAttemptRow(attempt),
-        uploadUrl: uploadResult.uploadUrl,
-        storageKey: uploadResult.storageKey,
-        uploadExpiresAt: uploadResult.expiresAt,
-      };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err instanceof AppError ? err : new AppError(500, 'Failed to create submission');
-    } finally {
-      client.release();
-    }
+    return {
+      submission: toSubmissionRow({ ...subRow, current_attempt_id: attRow.id }),
+      attempt: toAttemptRow(attRow),
+      uploadUrl: uploadResult.uploadUrl,
+      storageKey: uploadResult.storageKey,
+      uploadExpiresAt: uploadResult.expiresAt,
+    };
   }
 
   async getSubmission(

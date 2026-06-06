@@ -1,4 +1,4 @@
-import { supabaseAdmin, requirePgPool } from '../db/client';
+import { supabaseAdmin } from '../db/client';
 import { AppError, AttemptStatus, NotificationType, UserRole } from '../types';
 import { toAttemptRow, AttemptRow, toSubmissionRow, SubmissionRow } from './SubmissionService';
 import { mediaService, MediaService } from './MediaService';
@@ -48,86 +48,74 @@ export class AttemptService {
       throw new AppError(409, `Cannot add attempt to a ${sub.status} submission`);
     }
 
-    const pool = requirePgPool();
-    const client = await pool.connect();
+    // Get current max attempt number
+    const { data: maxData } = await supabaseAdmin
+      .from('submission_attempts')
+      .select('attempt_number')
+      .eq('submission_id', submissionId)
+      .order('attempt_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    try {
-      await client.query('BEGIN');
+    const nextAttemptNumber = maxData
+      ? ((maxData as Record<string, unknown>).attempt_number as number) + 1
+      : 1;
 
-      // Lock the submission row to serialize concurrent attempt inserts
-      await client.query('SELECT id FROM submissions WHERE id = $1 FOR UPDATE', [submissionId]);
+    // Build deterministic key using submissionId + attemptNumber (blueprint §13.1)
+    const storageKey = MediaService.buildStudentRecordingKey(
+      studentId,
+      submissionId,
+      nextAttemptNumber,
+    );
 
-      const { rows: [maxRow] } = await client.query<{ max: string }>(
-        `SELECT COALESCE(MAX(attempt_number), 0) AS max
-         FROM submission_attempts
-         WHERE submission_id = $1`,
-        [submissionId],
-      );
-      const nextAttemptNumber = parseInt(maxRow.max, 10) + 1;
+    const { data: att, error: attError } = await supabaseAdmin
+      .from('submission_attempts')
+      .insert({
+        submission_id: submissionId,
+        student_id: studentId,
+        quran_page_id: sub.quran_page_id,
+        attempt_number: nextAttemptNumber,
+        recording_storage_key: storageKey,
+        recording_duration_ms: input.recordingDurationMs ?? null,
+        original_file_name: input.originalFileName ?? null,
+        content_type: input.contentType ?? null,
+        size_bytes: input.sizeBytes ?? null,
+        status: 'submitted',
+      })
+      .select('*')
+      .single();
 
-      // Build deterministic key using submissionId + attemptNumber (blueprint §13.1)
-      const storageKey = MediaService.buildStudentRecordingKey(
-        studentId,
-        submissionId,
-        nextAttemptNumber,
-      );
+    if (attError || !att) throw new AppError(500, 'Failed to create attempt');
+    const attempt = att as Record<string, unknown>;
 
-      const { rows: [attempt] } = await client.query<Record<string, unknown>>(`
-        INSERT INTO submission_attempts (
-          submission_id, student_id, quran_page_id, attempt_number,
-          recording_storage_key, recording_duration_ms, original_file_name,
-          content_type, size_bytes, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'submitted')
-        RETURNING *
-      `, [
-        submissionId,
-        studentId,
-        sub.quran_page_id,
-        nextAttemptNumber,
-        storageKey,
-        input.recordingDurationMs ?? null,
-        input.originalFileName ?? null,
-        input.contentType ?? null,
-        input.sizeBytes ?? null,
-      ]);
+    // Update submission: new current attempt, reset status to submitted
+    await supabaseAdmin
+      .from('submissions')
+      .update({ current_attempt_id: attempt.id, status: 'submitted', updated_at: new Date().toISOString() })
+      .eq('id', submissionId);
 
-      // Update submission: new current attempt, reset status to submitted
-      await client.query(`
-        UPDATE submissions
-        SET current_attempt_id = $1, status = 'submitted', updated_at = now()
-        WHERE id = $2
-      `, [attempt.id, submissionId]);
+    // Re-queue the assignment for teacher review (handles post-resubmission case)
+    await supabaseAdmin
+      .from('assignments')
+      .update({ status: 'submitted', updated_at: new Date().toISOString() })
+      .eq('id', sub.assignment_id)
+      .neq('status', 'archived');
 
-      // Re-queue the assignment for teacher review (handles post-resubmission case)
-      await client.query(`
-        UPDATE assignments
-        SET status = 'submitted', updated_at = now()
-        WHERE id = $1 AND status != 'archived'
-      `, [sub.assignment_id]);
+    // Generate signed upload URL
+    const uploadResult = await mediaService.getSignedUploadUrl(
+      studentId,
+      'student_recording',
+      input.contentType ?? 'audio/m4a',
+      submissionId,
+      nextAttemptNumber,
+    );
 
-      await client.query('COMMIT');
-
-      // Generate signed upload URL after commit
-      const uploadResult = await mediaService.getSignedUploadUrl(
-        studentId,
-        'student_recording',
-        input.contentType ?? 'audio/m4a',
-        submissionId,
-        nextAttemptNumber,
-      );
-
-      return {
-        attempt: toAttemptRow(attempt),
-        uploadUrl: uploadResult.uploadUrl,
-        storageKey: uploadResult.storageKey,
-        uploadExpiresAt: uploadResult.expiresAt,
-      };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err instanceof AppError ? err : new AppError(500, 'Failed to create attempt');
-    } finally {
-      client.release();
-    }
+    return {
+      attempt: toAttemptRow(attempt),
+      uploadUrl: uploadResult.uploadUrl,
+      storageKey: uploadResult.storageKey,
+      uploadExpiresAt: uploadResult.expiresAt,
+    };
   }
 
   async getAttemptById(
@@ -263,111 +251,85 @@ export class AttemptService {
     const progressStatus = pageStatus === 'completed' ? 'completed' : 'needs_resubmission';
     const attemptNumber = attemptRow.attempt_number as number;
 
-    // ── Transaction ───────────────────────────────────────────────────────────
-    const pool = requirePgPool();
-    const client = await pool.connect();
+    const reviewedAt = new Date().toISOString();
 
-    let updatedAttempt: Record<string, unknown>;
-    let updatedSubmission: Record<string, unknown>;
+    const notifType: NotificationType = pageStatus === 'completed'
+      ? 'teacher_completed_review'
+      : 'teacher_requested_resubmission';
+    const notifTitle = pageStatus === 'completed'
+      ? 'Your recitation has been marked complete'
+      : 'Your teacher has requested a new attempt';
+    const notifBody = pageStatus === 'completed'
+      ? `Page ${pageNumber} is now complete.`
+      : `Please re-record and resubmit page ${pageNumber}.`;
 
-    try {
-      await client.query('BEGIN');
+    // 1. Update attempt
+    const { data: updAtt, error: attUpdateError } = await supabaseAdmin
+      .from('submission_attempts')
+      .update({ status: attemptStatus, reviewed_at: reviewedAt, updated_at: reviewedAt })
+      .eq('id', attemptId)
+      .select('*')
+      .single();
 
-      // Lock the submission row
-      await client.query('SELECT id FROM submissions WHERE id = $1 FOR UPDATE', [submissionId]);
+    if (attUpdateError || !updAtt) throw new AppError(500, 'Failed to update attempt');
 
-      // 1. Update attempt
-      const { rows: [att] } = await client.query<Record<string, unknown>>(`
-        UPDATE submission_attempts
-        SET status = $1, reviewed_at = now(), updated_at = now()
-        WHERE id = $2
-        RETURNING *
-      `, [attemptStatus, attemptId]);
-      updatedAttempt = att;
+    // 2. Update submission
+    const submissionUpdate: Record<string, unknown> = {
+      status: submissionStatus,
+      reviewed_at: reviewedAt,
+      updated_at: reviewedAt,
+    };
+    if (pageStatus === 'completed') submissionUpdate.completed_at = reviewedAt;
 
-      // 2. Update submission
-      const completedAtUpdate = pageStatus === 'completed' ? ', completed_at = now()' : '';
-      const { rows: [updSub] } = await client.query<Record<string, unknown>>(`
-        UPDATE submissions
-        SET status = $1, reviewed_at = now()${completedAtUpdate}, updated_at = now()
-        WHERE id = $2
-        RETURNING *
-      `, [submissionStatus, submissionId]);
-      updatedSubmission = updSub;
+    const { data: updSub, error: subUpdateError } = await supabaseAdmin
+      .from('submissions')
+      .update(submissionUpdate)
+      .eq('id', submissionId)
+      .select('*')
+      .single();
 
-      // 3. Update assignment → 'reviewed' (leaves review queue)
-      await client.query(`
-        UPDATE assignments
-        SET status = 'reviewed', updated_at = now()
-        WHERE id = $1
-      `, [assignmentId]);
+    if (subUpdateError || !updSub) throw new AppError(500, 'Failed to update submission');
 
-      // 4. Upsert student_page_progress
-      const completedAttemptId = pageStatus === 'completed' ? attemptId : null;
-      const completedAt = pageStatus === 'completed' ? new Date().toISOString() : null;
+    // 3. Update assignment → 'reviewed' (leaves review queue)
+    await supabaseAdmin
+      .from('assignments')
+      .update({ status: 'reviewed', updated_at: reviewedAt })
+      .eq('id', assignmentId);
 
-      await client.query(`
-        INSERT INTO student_page_progress
-          (student_id, quran_page_id, page_number, status,
-           latest_submission_id, latest_attempt_id, completed_attempt_id,
-           attempt_count, completed_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (student_id, quran_page_id) DO UPDATE SET
-          status                = EXCLUDED.status,
-          latest_submission_id  = EXCLUDED.latest_submission_id,
-          latest_attempt_id     = EXCLUDED.latest_attempt_id,
-          completed_attempt_id  = CASE
-            WHEN EXCLUDED.status = 'completed' THEN EXCLUDED.completed_attempt_id
-            ELSE student_page_progress.completed_attempt_id
-          END,
-          attempt_count         = EXCLUDED.attempt_count,
-          completed_at          = CASE
-            WHEN EXCLUDED.status = 'completed' THEN EXCLUDED.completed_at
-            ELSE student_page_progress.completed_at
-          END,
-          updated_at            = now()
-      `, [
-        studentId, quranPageId, pageNumber, progressStatus,
-        submissionId, attemptId, completedAttemptId,
-        attemptNumber, completedAt,
-      ]);
+    // 4. Upsert student_page_progress
+    await supabaseAdmin.from('student_page_progress').upsert({
+      student_id: studentId,
+      quran_page_id: quranPageId,
+      page_number: pageNumber,
+      status: progressStatus,
+      latest_submission_id: submissionId,
+      latest_attempt_id: attemptId,
+      completed_attempt_id: pageStatus === 'completed' ? attemptId : null,
+      attempt_count: attemptNumber,
+      completed_at: pageStatus === 'completed' ? reviewedAt : null,
+      updated_at: reviewedAt,
+    }, { onConflict: 'student_id,quran_page_id' });
 
-      // 5. Insert notification (inside transaction so it's atomic with the review)
-      const notifType: NotificationType = pageStatus === 'completed'
-        ? 'teacher_completed_review'
-        : 'teacher_requested_resubmission';
-      const notifTitle = pageStatus === 'completed'
-        ? 'Your recitation has been marked complete'
-        : 'Your teacher has requested a new attempt';
-      const notifBody = pageStatus === 'completed'
-        ? `Page ${pageNumber} is now complete.`
-        : `Please re-record and resubmit page ${pageNumber}.`;
+    // 5. Insert notification
+    await supabaseAdmin.from('notifications').insert({
+      recipient_user_id: studentId,
+      actor_user_id: reviewerId,
+      type: notifType,
+      title: notifTitle,
+      body: notifBody,
+      data: { submissionId, attemptId, assignmentId, quranPageId, pageNumber },
+      channel: 'in_app',
+      delivery_status: 'pending',
+    });
 
-      await client.query(`
-        INSERT INTO notifications
-          (recipient_user_id, actor_user_id, type, title, body, data, channel, delivery_status)
-        VALUES ($1, $2, $3, $4, $5, $6, 'in_app', 'pending')
-      `, [
-        studentId, reviewerId, notifType, notifTitle, notifBody,
-        JSON.stringify({ submissionId, attemptId, assignmentId, quranPageId, pageNumber }),
-      ]);
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err instanceof AppError ? err : new AppError(500, 'Failed to complete review');
-    } finally {
-      client.release();
-    }
-
-    // Recalculate snapshot outside the transaction — failure is non-critical.
+    // Recalculate snapshot — failure is non-critical.
     progressService.recalculateSnapshot(studentId).catch((snapErr) => {
       console.error('[AttemptService] Snapshot recalculation failed:', snapErr);
     });
 
     return {
-      attempt: toAttemptRow(updatedAttempt!),
-      submission: toSubmissionRow(updatedSubmission!),
+      attempt: toAttemptRow(updAtt as Record<string, unknown>),
+      submission: toSubmissionRow(updSub as Record<string, unknown>),
       assignmentStatus: 'reviewed',
       pageProgressStatus: progressStatus,
     };

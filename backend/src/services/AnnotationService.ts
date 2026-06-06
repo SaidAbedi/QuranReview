@@ -1,4 +1,4 @@
-import { supabaseAdmin, requirePgPool } from '../db/client';
+import { supabaseAdmin } from '../db/client';
 import { AppError, AnnotationType, AnchorType, MistakeType, PaginationParams, PaginatedResult, UserRole } from '../types';
 import { mistakeFeedbackService, MistakeOptionDetail } from './MistakeFeedbackService';
 
@@ -285,46 +285,18 @@ export class AnnotationService {
       }
     }
 
-    const pool = requirePgPool();
-    const client = await pool.connect();
-    const results: AnnotationRow[] = [];
+    const insertRows = items.map((item) =>
+      buildInsertRow(submissionId, attemptId, teacherId, quranPageId, item),
+    );
 
-    try {
-      await client.query('BEGIN');
+    const { data, error: insertError } = await supabaseAdmin
+      .from('annotations')
+      .insert(insertRows)
+      .select('*');
 
-      for (const item of items) {
-        const row = buildInsertRow(submissionId, attemptId, teacherId, quranPageId, item);
-        const points = row.points as unknown[] | null;
+    if (insertError || !data) throw new AppError(500, 'Failed to batch create annotations');
 
-        const { rows: [ann] } = await client.query<Record<string, unknown>>(`
-          INSERT INTO annotations (
-            submission_id, submission_attempt_id, teacher_id, quran_page_id,
-            annotation_type, anchor_type, points, visual_bounds, point_count,
-            is_simplified, style, verse_key, word_id, word_position, line_number,
-            mistake_type, mistake_option_id, quick_label, note_text, recording_timestamp_ms
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
-          RETURNING *
-        `, [
-          row.submission_id, row.submission_attempt_id, row.teacher_id, row.quran_page_id,
-          row.annotation_type, row.anchor_type,
-          points !== null ? JSON.stringify(points) : null,
-          row.visual_bounds !== null ? JSON.stringify(row.visual_bounds) : null,
-          row.point_count, row.is_simplified,
-          JSON.stringify(row.style),
-          row.verse_key, row.word_id, row.word_position, row.line_number,
-          row.mistake_type, row.mistake_option_id, row.quick_label,
-          row.note_text, row.recording_timestamp_ms,
-        ]);
-        results.push(toAnnotationRow(ann));
-      }
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err instanceof AppError ? err : new AppError(500, 'Failed to batch create annotations');
-    } finally {
-      client.release();
-    }
+    const results = (data as Record<string, unknown>[]).map(toAnnotationRow);
 
     // Post-enrich with mistakeOptionDetail — RETURNING * has no joins.
     if (optionIds.length > 0) {

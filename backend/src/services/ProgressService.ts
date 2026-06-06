@@ -1,4 +1,4 @@
-import { supabaseAdmin, requirePgPool } from '../db/client';
+import { supabaseAdmin } from '../db/client';
 import { AppError, UserRole } from '../types';
 
 const TOTAL_QURAN_PAGES = 604;
@@ -167,52 +167,62 @@ export class ProgressService {
   ): Promise<SurahProgressDetail> {
     await this.assertAccess(studentId, requesterId, requesterRole);
 
-    const pool = requirePgPool();
+    // Fetch all mapping rows for this surah, then deduplicate by quran_page_id
+    const { data: mappingRows } = await supabaseAdmin
+      .from('quran_page_mappings')
+      .select('page_number, quran_page_id')
+      .eq('surah_number', surahNumber)
+      .eq('provider_mushaf_id', 1)
+      .order('page_number', { ascending: true });
 
-    const [pagesResult, totalResult, surahResult] = await Promise.all([
-      // Page-level detail: LEFT JOIN so pages with no progress show as not_started
-      pool.query<{
-        page_number: number;
-        quran_page_id: string;
-        status: string;
-        attempt_count: number;
-        completed_at: string | null;
-      }>(`
-        SELECT
-          qpm.page_number,
-          qpm.quran_page_id::text,
-          COALESCE(spp.status, 'not_started') AS status,
-          COALESCE(spp.attempt_count, 0)      AS attempt_count,
-          spp.completed_at
-        FROM quran_page_mappings qpm
-        LEFT JOIN student_page_progress spp
-          ON spp.quran_page_id = qpm.quran_page_id
-         AND spp.student_id = $1
-        WHERE qpm.surah_number = $2
-          AND qpm.provider_mushaf_id = 1
-        ORDER BY qpm.page_number
-      `, [studentId, surahNumber]),
+    const seenPages = new Set<string>();
+    const uniquePages = (mappingRows ?? []).filter((m) => {
+      const row = m as Record<string, unknown>;
+      const pid = row.quran_page_id as string;
+      if (seenPages.has(pid)) return false;
+      seenPages.add(pid);
+      return true;
+    });
+    const quranPageIds = uniquePages.map((m) => (m as Record<string, unknown>).quran_page_id as string);
 
-      // Total distinct pages in this surah across all mapped pages
-      pool.query<{ total: string }>(`
-        SELECT COUNT(DISTINCT quran_page_id) AS total
-        FROM quran_page_mappings
-        WHERE surah_number = $1 AND provider_mushaf_id = 1
-      `, [surahNumber]),
-
-      // Surah name
-      pool.query<{ name_english: string | null; name_arabic: string | null }>(`
-        SELECT name_english, name_arabic
-        FROM surahs
-        WHERE surah_number = $1
-        LIMIT 1
-      `, [surahNumber]),
+    const [progressResult, surahResult] = await Promise.all([
+      quranPageIds.length > 0
+        ? supabaseAdmin
+            .from('student_page_progress')
+            .select('quran_page_id, status, attempt_count, completed_at')
+            .eq('student_id', studentId)
+            .in('quran_page_id', quranPageIds)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      supabaseAdmin
+        .from('surahs')
+        .select('name_english')
+        .eq('surah_number', surahNumber)
+        .limit(1)
+        .maybeSingle(),
     ]);
 
-    const pages = pagesResult.rows;
-    const totalPages = parseInt(totalResult.rows[0]?.total ?? '0', 10);
-    const surahName = surahResult.rows[0]?.name_english ?? null;
+    const progressMap = new Map(
+      ((progressResult.data ?? []) as Record<string, unknown>[]).map((p) => [
+        p.quran_page_id as string, p,
+      ]),
+    );
+    const surahName = surahResult.data
+      ? ((surahResult.data as Record<string, unknown>).name_english as string | null)
+      : null;
 
+    const pages = uniquePages.map((m) => {
+      const row = m as Record<string, unknown>;
+      const progress = progressMap.get(row.quran_page_id as string);
+      return {
+        pageNumber: row.page_number as number,
+        quranPageId: row.quran_page_id as string,
+        status: progress ? (progress.status as string) : 'not_started',
+        attemptCount: progress ? Number(progress.attempt_count) : 0,
+        completedAt: progress ? ((progress.completed_at as string | null) ?? null) : null,
+      };
+    });
+
+    const totalPages = uniquePages.length;
     const pagesCompleted = pages.filter((p) => p.status === 'completed').length;
     const pagesAssigned = pages.filter((p) => p.status !== 'not_started').length;
 
@@ -225,13 +235,7 @@ export class ProgressService {
       completionPercent: totalPages > 0
         ? parseFloat((pagesCompleted / totalPages * 100).toFixed(2))
         : 0,
-      pages: pages.map((p) => ({
-        pageNumber: p.page_number,
-        quranPageId: p.quran_page_id,
-        status: p.status,
-        attemptCount: Number(p.attempt_count),
-        completedAt: p.completed_at ?? null,
-      })),
+      pages,
     };
   }
 
@@ -244,41 +248,50 @@ export class ProgressService {
   ): Promise<JuzProgressDetail> {
     await this.assertAccess(studentId, requesterId, requesterRole);
 
-    const pool = requirePgPool();
+    const { data: mappingRows } = await supabaseAdmin
+      .from('quran_page_mappings')
+      .select('page_number, quran_page_id')
+      .eq('juz_number', juzNumber)
+      .eq('provider_mushaf_id', 1)
+      .order('page_number', { ascending: true });
 
-    const [pagesResult, totalResult] = await Promise.all([
-      pool.query<{
-        page_number: number;
-        quran_page_id: string;
-        status: string;
-        attempt_count: number;
-        completed_at: string | null;
-      }>(`
-        SELECT
-          qpm.page_number,
-          qpm.quran_page_id::text,
-          COALESCE(spp.status, 'not_started') AS status,
-          COALESCE(spp.attempt_count, 0)      AS attempt_count,
-          spp.completed_at
-        FROM quran_page_mappings qpm
-        LEFT JOIN student_page_progress spp
-          ON spp.quran_page_id = qpm.quran_page_id
-         AND spp.student_id = $1
-        WHERE qpm.juz_number = $2
-          AND qpm.provider_mushaf_id = 1
-        ORDER BY qpm.page_number
-      `, [studentId, juzNumber]),
+    const seenPages = new Set<string>();
+    const uniquePages = (mappingRows ?? []).filter((m) => {
+      const row = m as Record<string, unknown>;
+      const pid = row.quran_page_id as string;
+      if (seenPages.has(pid)) return false;
+      seenPages.add(pid);
+      return true;
+    });
+    const quranPageIds = uniquePages.map((m) => (m as Record<string, unknown>).quran_page_id as string);
 
-      pool.query<{ total: string }>(`
-        SELECT COUNT(DISTINCT quran_page_id) AS total
-        FROM quran_page_mappings
-        WHERE juz_number = $1 AND provider_mushaf_id = 1
-      `, [juzNumber]),
-    ]);
+    const { data: progressData } = quranPageIds.length > 0
+      ? await supabaseAdmin
+          .from('student_page_progress')
+          .select('quran_page_id, status, attempt_count, completed_at')
+          .eq('student_id', studentId)
+          .in('quran_page_id', quranPageIds)
+      : { data: [] as Record<string, unknown>[] };
 
-    const pages = pagesResult.rows;
-    const totalPages = parseInt(totalResult.rows[0]?.total ?? '0', 10);
+    const progressMap = new Map(
+      ((progressData ?? []) as Record<string, unknown>[]).map((p) => [
+        p.quran_page_id as string, p,
+      ]),
+    );
 
+    const pages = uniquePages.map((m) => {
+      const row = m as Record<string, unknown>;
+      const progress = progressMap.get(row.quran_page_id as string);
+      return {
+        pageNumber: row.page_number as number,
+        quranPageId: row.quran_page_id as string,
+        status: progress ? (progress.status as string) : 'not_started',
+        attemptCount: progress ? Number(progress.attempt_count) : 0,
+        completedAt: progress ? ((progress.completed_at as string | null) ?? null) : null,
+      };
+    });
+
+    const totalPages = uniquePages.length;
     const pagesCompleted = pages.filter((p) => p.status === 'completed').length;
     const pagesAssigned = pages.filter((p) => p.status !== 'not_started').length;
 
@@ -290,13 +303,7 @@ export class ProgressService {
       completionPercent: totalPages > 0
         ? parseFloat((pagesCompleted / totalPages * 100).toFixed(2))
         : 0,
-      pages: pages.map((p) => ({
-        pageNumber: p.page_number,
-        quranPageId: p.quran_page_id,
-        status: p.status,
-        attemptCount: Number(p.attempt_count),
-        completedAt: p.completed_at ?? null,
-      })),
+      pages,
     };
   }
 
@@ -304,50 +311,58 @@ export class ProgressService {
   // Recalculates the snapshot from student_page_progress + quran_page_mappings.
   // Failures are non-critical: snapshot is a read model — it will be corrected on the next review.
   async recalculateSnapshot(studentId: string): Promise<void> {
-    const pool = requirePgPool();
+    const { data: progressRows } = await supabaseAdmin
+      .from('student_page_progress')
+      .select('quran_page_id, status')
+      .eq('student_id', studentId);
 
-    // Single query: join progress with mappings, aggregate per surah and juz
-    const { rows } = await pool.query<{
-      surah_number: number | null;
-      juz_number: number | null;
-      pages_completed: string;
-      pages_assigned: string;
-    }>(`
-      SELECT
-        qpm.surah_number,
-        qpm.juz_number,
-        COUNT(*) FILTER (WHERE spp.status = 'completed') AS pages_completed,
-        COUNT(*)                                          AS pages_assigned
-      FROM student_page_progress spp
-      LEFT JOIN quran_page_mappings qpm
-        ON qpm.quran_page_id = spp.quran_page_id
-       AND qpm.provider_mushaf_id = 1
-      WHERE spp.student_id = $1
-      GROUP BY qpm.surah_number, qpm.juz_number
-    `, [studentId]);
+    const progressList = (progressRows ?? []) as Record<string, unknown>[];
 
     const surahProgress: Record<string, Record<string, number>> = {};
     const juzProgress: Record<string, Record<string, number>> = {};
     let totalCompleted = 0;
 
-    for (const r of rows) {
-      const completed = parseInt(r.pages_completed, 10);
-      const assigned = parseInt(r.pages_assigned, 10);
-      totalCompleted += completed;
+    if (progressList.length > 0) {
+      const quranPageIds = progressList.map((p) => p.quran_page_id as string);
 
-      if (r.surah_number !== null) {
-        const key = String(r.surah_number);
-        surahProgress[key] = {
-          pages_completed: (surahProgress[key]?.pages_completed ?? 0) + completed,
-          pages_assigned: (surahProgress[key]?.pages_assigned ?? 0) + assigned,
-        };
+      const { data: mappingRows } = await supabaseAdmin
+        .from('quran_page_mappings')
+        .select('quran_page_id, surah_number, juz_number')
+        .eq('provider_mushaf_id', 1)
+        .in('quran_page_id', quranPageIds);
+
+      const pageToMapping = new Map<string, { surah_number: number | null; juz_number: number | null }>();
+      for (const m of (mappingRows ?? [])) {
+        const row = m as Record<string, unknown>;
+        const pid = row.quran_page_id as string;
+        if (!pageToMapping.has(pid)) {
+          pageToMapping.set(pid, {
+            surah_number: row.surah_number as number | null,
+            juz_number: row.juz_number as number | null,
+          });
+        }
       }
-      if (r.juz_number !== null) {
-        const key = String(r.juz_number);
-        juzProgress[key] = {
-          pages_completed: (juzProgress[key]?.pages_completed ?? 0) + completed,
-          pages_assigned: (juzProgress[key]?.pages_assigned ?? 0) + assigned,
-        };
+
+      for (const p of progressList) {
+        const pid = p.quran_page_id as string;
+        const completed = (p.status as string) === 'completed' ? 1 : 0;
+        totalCompleted += completed;
+
+        const mapping = pageToMapping.get(pid);
+        if (mapping?.surah_number != null) {
+          const key = String(mapping.surah_number);
+          surahProgress[key] = {
+            pages_completed: (surahProgress[key]?.pages_completed ?? 0) + completed,
+            pages_assigned: (surahProgress[key]?.pages_assigned ?? 0) + 1,
+          };
+        }
+        if (mapping?.juz_number != null) {
+          const key = String(mapping.juz_number);
+          juzProgress[key] = {
+            pages_completed: (juzProgress[key]?.pages_completed ?? 0) + completed,
+            pages_assigned: (juzProgress[key]?.pages_assigned ?? 0) + 1,
+          };
+        }
       }
     }
 

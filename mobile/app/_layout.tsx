@@ -51,8 +51,8 @@ export default function RootLayout() {
       if (status === "pending_assignment" || status === "new") {
         if (segments[0] !== "pending") router.replace("/pending");
       } else if (user.role === "admin" || user.role === "super_admin") {
-        if (segments[0] !== "admin-placeholder") {
-          router.replace("/admin-placeholder" as "/");
+        if (segments[0] !== "(admin)") {
+          router.replace("/(admin)" as "/");
         }
       } else if (user.role === "teacher") {
         if (segments[0] !== "(teacher)") {
@@ -72,8 +72,8 @@ export default function RootLayout() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="(teacher)" />
+      <Stack.Screen name="(admin)" />
       <Stack.Screen name="pending" />
-      <Stack.Screen name="admin-placeholder" />
       <Stack.Screen name="assignments" />
     </Stack>
   );

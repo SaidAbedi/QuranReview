@@ -21,6 +21,8 @@ const UpdateRelationshipSchema = z.object({
   status: z.enum(['active', 'inactive', 'pending']),
 });
 
+const RelationshipStatusSchema = z.enum(['active', 'inactive', 'pending']).optional();
+
 // GET /api/admin/students/unassigned
 // Returns students with a pending_assignment request — admin review queue.
 router.get(
@@ -96,5 +98,28 @@ router.patch(
     }
   },
 );
+
+// GET /api/admin/teachers
+router.get('/admin/teachers', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const result = await adminAssignmentService.getTeachers();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/admin/relationships?status=active|inactive|pending
+router.get('/admin/relationships', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const status = req.query.status
+      ? RelationshipStatusSchema.parse(req.query.status)
+      : undefined;
+    const result = await adminAssignmentService.getRelationships(status);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 export { router as adminRouter };

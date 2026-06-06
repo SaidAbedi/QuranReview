@@ -195,6 +195,35 @@ export interface SignedReadUrlResult {
   expiresAt: string;
 }
 
+// ── Admin ────────────────────────────────────────────────────────────────────
+
+export interface UnassignedStudentRow {
+  id: string;
+  email: string;
+  displayName: string;
+  requestId: string;
+  requestStatus: string;
+  createdAt: string;
+}
+
+export interface TeacherOption {
+  id: string;
+  displayName: string;
+  email: string;
+  currentLoad: number;
+  capacity: number | null;
+}
+
+export interface AdminRelationshipRow {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  studentId: string;
+  studentName: string;
+  status: 'active' | 'inactive' | 'pending';
+  createdAt: string;
+}
+
 // ── Quran pages ──────────────────────────────────────────────────────────────
 
 export interface QuranPageSummary {

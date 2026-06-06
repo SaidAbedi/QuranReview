@@ -37,6 +37,24 @@ export interface TeacherStudentRelationshipRow {
   createdAt: string;
 }
 
+export interface TeacherOptionRow {
+  id: string;
+  displayName: string;
+  email: string;
+  currentLoad: number;
+  capacity: number | null;
+}
+
+export interface EnrichedRelationshipRow {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  studentId: string;
+  studentName: string;
+  status: 'active' | 'inactive' | 'pending';
+  createdAt: string;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toAssignmentRequestRow(
@@ -357,6 +375,80 @@ export class AdminAssignmentService {
     }
 
     return result;
+  }
+
+  // Returns all users with role='teacher', including their current student load.
+  async getTeachers(): Promise<TeacherOptionRow[]> {
+    const pool = requirePgPool();
+    const { rows } = await pool.query<{
+      id: string;
+      display_name: string;
+      email: string;
+      current_load: number;
+      capacity: number | null;
+    }>(`
+      SELECT
+        u.id,
+        u.display_name,
+        u.email,
+        COALESCE(up.teacher_current_load, 0)  AS current_load,
+        up.teacher_capacity                    AS capacity
+      FROM users u
+      LEFT JOIN user_profiles up ON up.user_id = u.id
+      WHERE u.role = 'teacher'
+      ORDER BY u.display_name ASC
+    `);
+
+    return rows.map((r) => ({
+      id: r.id,
+      displayName: r.display_name,
+      email: r.email,
+      currentLoad: r.current_load,
+      capacity: r.capacity,
+    }));
+  }
+
+  // Returns all teacher-student relationships enriched with display names.
+  async getRelationships(
+    status?: 'active' | 'inactive' | 'pending',
+  ): Promise<EnrichedRelationshipRow[]> {
+    const pool = requirePgPool();
+    const conditions = status ? 'WHERE tsr.status = $1' : '';
+    const params = status ? [status] : [];
+
+    const { rows } = await pool.query<{
+      id: string;
+      teacher_id: string;
+      teacher_name: string;
+      student_id: string;
+      student_name: string;
+      status: string;
+      created_at: string;
+    }>(`
+      SELECT
+        tsr.id,
+        tsr.teacher_id,
+        t.display_name  AS teacher_name,
+        tsr.student_id,
+        s.display_name  AS student_name,
+        tsr.status,
+        tsr.created_at
+      FROM teacher_student_relationships tsr
+      JOIN users t ON t.id = tsr.teacher_id
+      JOIN users s ON s.id = tsr.student_id
+      ${conditions}
+      ORDER BY tsr.created_at DESC
+    `, params);
+
+    return rows.map((r) => ({
+      id: r.id,
+      teacherId: r.teacher_id,
+      teacherName: r.teacher_name,
+      studentId: r.student_id,
+      studentName: r.student_name,
+      status: r.status as EnrichedRelationshipRow['status'],
+      createdAt: r.created_at,
+    }));
   }
 }
 

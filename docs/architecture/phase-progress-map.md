@@ -1,218 +1,245 @@
 # Phase Progress Map
 
-Tracks which backend routes and services are real implementations vs. stubs, updated after each phase.
+Tracks actual implementation status across backend, mobile, and remaining work.
+Last updated: 2026-06-06
 
 ## Legend
 
-| Symbol | Meaning                                |
-| ------ | -------------------------------------- |
-| ✅     | Fully implemented and reviewed         |
-| 🔧     | In progress / current phase            |
-| ⬜     | Stub — returns 501 Not Implemented     |
-| 🔒     | Requires auth middleware (implemented) |
+| Symbol | Meaning                                      |
+| ------ | -------------------------------------------- |
+| ✅     | Fully implemented (backend + mobile UI)      |
+| 🔵     | Backend done — mobile UI missing or partial  |
+| ⬜     | Not started                                  |
 
 ---
 
 ## Phase Status
 
-| Phase | Scope                                                         | Status |
-| ----- | ------------------------------------------------------------- | ------ |
-| 0     | Project plan, monorepo scaffold, CLAUDE.md                    | ✅     |
-| 1     | DB schema (001_initial_schema.sql) + seed (002_seed_data.sql) | ✅     |
-| 2     | Express skeleton, all stubs, middleware                       | ✅     |
-| 3     | Auth middleware, GET /api/me, PATCH /api/me/profile           | ✅     |
-| 4     | QuranContentService, 003_add_constraints.sql                  | ✅     |
-| 5     | Assignments, Submissions, Attempts                            | ⬜     |
-| 6     | Teacher review flow                                           | ⬜     |
-| 7     | Annotations                                                   | ⬜     |
-| 8     | Progress tracking                                             | ⬜     |
-| 9     | Media (audio upload, storage)                                 | ⬜     |
-| 10    | Notifications                                                 | ⬜     |
-| 11    | Admin assignment management                                   | ⬜     |
-| 12    | Mistake feedback                                              | ⬜     |
-| 13    | React Native mobile app                                       | ⬜     |
-| 14    | Polish, E2E testing, launch prep                              | ⬜     |
+| Phase | Scope                                                | Status |
+| ----- | ---------------------------------------------------- | ------ |
+| 0     | Project plan, monorepo scaffold, CLAUDE.md           | ✅     |
+| 1     | DB schema (migrations 001–008)                       | ✅     |
+| 2     | Express skeleton, middleware, error handling          | ✅     |
+| 3     | Auth middleware, GET /api/me, PATCH /api/me/profile  | ✅     |
+| 4     | QuranContentService, Quran page images (604 PNGs)    | ✅     |
+| 5     | Assignments, Submissions, Attempts (backend)         | ✅     |
+| 6     | Storage & signed URLs (upload + read)                | ✅     |
+| 7     | Annotations (freehand, batch, voice notes, markers)  | ✅     |
+| 8     | Review completion & progress tracking (backend)      | ✅     |
+| 9     | Notifications (in-app DB + read/unread)              | ✅     |
+| 10    | Admin assignment management (backend)                | ✅     |
+| 11    | Mistake feedback categories & options (backend)      | ✅     |
+| 12    | Mobile foundation — Expo Dev Client, auth, routing   | ✅     |
+| 13    | Student mobile flow                                  | ✅     |
+| 14    | Teacher mobile flow — queue, review, annotations     | ✅     |
+| 15    | Admin mobile flow — assign queue, relationships      | ✅     |
 
 ---
 
-## Route Implementation Map
+## Backend Route Map (all implemented)
 
-### Auth & Profile (Phase 3)
+### Auth & Profile
 
-| Method | Route           | Status | Guard           |
-| ------ | --------------- | ------ | --------------- |
-| GET    | /api/me         | ✅     | 🔒 authenticate |
-| PATCH  | /api/me/profile | ✅     | 🔒 authenticate |
+| Method | Route            | Notes                                |
+| ------ | ---------------- | ------------------------------------ |
+| GET    | /api/me          | Returns user + profile + role        |
+| PATCH  | /api/me/profile  | Update display name, onboarding step |
 
-### Quran Content (Phase 4)
+### Quran Content
 
-| Method | Route                                | Status | Guard           |
-| ------ | ------------------------------------ | ------ | --------------- |
-| GET    | /api/quran/pages/lookup              | ✅     | 🔒 authenticate |
-| GET    | /api/quran/pages/:pageNumber         | ✅     | 🔒 authenticate |
-| GET    | /api/quran/pages/:pageNumber/content | ✅     | 🔒 authenticate |
+| Method | Route                                | Notes                                      |
+| ------ | ------------------------------------ | ------------------------------------------ |
+| GET    | /api/quran/pages/lookup              | Lookup page by surah/ayah                  |
+| GET    | /api/quran/pages/:pageNumber         | Page metadata + storage-backed image URL   |
+| GET    | /api/quran/pages/:pageNumber/content | Full verse content (cache-first from QF)   |
 
-### Assignments (Phase 5)
+### Assignments
 
-| Method | Route                | Status | Guard                    |
-| ------ | -------------------- | ------ | ------------------------ |
-| GET    | /api/assignments     | ⬜     | 🔒 authenticate          |
-| POST   | /api/assignments     | ⬜     | 🔒 requireTeacherOrAbove |
-| GET    | /api/assignments/:id | ⬜     | 🔒 authenticate          |
-| PATCH  | /api/assignments/:id | ⬜     | 🔒 requireTeacherOrAbove |
+| Method | Route                              | Guard                  |
+| ------ | ---------------------------------- | ---------------------- |
+| POST   | /api/assignments                   | requireTeacher         |
+| GET    | /api/student/assignments           | student's own list     |
+| GET    | /api/assignments/:id               | owner check            |
+| GET    | /api/student/assignments/:id       | student shorthand      |
+| GET    | /api/teacher/assignments           | teacher's list         |
+| GET    | /api/teacher/review-queue          | enriched with attempt# |
 
-### Submissions (Phase 5)
+### Submissions & Attempts
 
-| Method | Route                | Status | Guard           |
-| ------ | -------------------- | ------ | --------------- |
-| GET    | /api/submissions     | ⬜     | 🔒 authenticate |
-| POST   | /api/submissions     | ⬜     | 🔒 authenticate |
-| GET    | /api/submissions/:id | ⬜     | 🔒 authenticate |
+| Method | Route                                                         | Notes                        |
+| ------ | ------------------------------------------------------------- | ---------------------------- |
+| POST   | /api/submissions                                              | Creates sub + attempt 1      |
+| GET    | /api/student/submissions                                      | Student's own submissions    |
+| GET    | /api/submissions/:id                                          | Single submission            |
+| GET    | /api/submissions/:id/attempts                                 | All attempts (ordered)       |
+| POST   | /api/submissions/:id/attempts                                 | New attempt (resubmission)   |
+| GET    | /api/submissions/:id/attempts/:attemptId                      | Single attempt               |
+| GET    | /api/submissions/:id/attempts/:attemptId/recording-url        | Signed read URL              |
+| POST   | /api/submissions/:id/attempts/:attemptId/complete-review      | Teacher marks reviewed       |
 
-### Submission Attempts (Phase 5)
+### Annotations
 
-| Method | Route                                    | Status | Guard                     |
-| ------ | ---------------------------------------- | ------ | ------------------------- |
-| POST   | /api/submissions/:id/attempts            | ⬜     | 🔒 authenticate (student) |
-| GET    | /api/submissions/:id/attempts/:attemptId | ⬜     | 🔒 authenticate           |
+| Method | Route                                                           | Guard          |
+| ------ | --------------------------------------------------------------- | -------------- |
+| GET    | /api/submissions/:id/attempts/:attemptId/annotation-markers     | auth           |
+| GET    | /api/submissions/:id/attempts/:attemptId/annotations            | auth, paginated|
+| POST   | /api/submissions/:id/attempts/:attemptId/annotations            | requireTeacher |
+| POST   | /api/submissions/:id/attempts/:attemptId/annotations/batch      | requireTeacher |
+| PATCH  | /api/annotations/:annotationId                                  | requireTeacher |
+| DELETE | /api/annotations/:annotationId                                  | soft delete    |
+| POST   | /api/annotations/:annotationId/voice-note                       | requireTeacher |
+| GET    | /api/mistake-categories                                         | auth           |
 
-### Teacher Review (Phase 6)
+### Progress
 
-| Method | Route                         | Status | Guard                    |
-| ------ | ----------------------------- | ------ | ------------------------ |
-| PATCH  | /api/attempts/:id/review      | ⬜     | 🔒 requireTeacherOrAbove |
-| POST   | /api/attempts/:id/voice-notes | ⬜     | 🔒 requireTeacherOrAbove |
+| Method | Route                              | Notes                              |
+| ------ | ---------------------------------- | ---------------------------------- |
+| GET    | /api/student/progress              | Overall: % complete, pages stats   |
+| GET    | /api/student/progress/surahs/:n    | Page-by-page detail for a surah    |
+| GET    | /api/student/progress/juz/:n       | Page-by-page detail for a juz      |
+| GET    | /api/progress/:studentId           | Teacher/admin view of a student    |
+| GET    | /api/progress/:studentId/surahs/:n | Teacher/admin surah drill-down     |
+| GET    | /api/progress/:studentId/juz/:n    | Teacher/admin juz drill-down       |
 
-### Annotations (Phase 7)
+### Media
 
-| Method | Route                                       | Status | Guard                    |
-| ------ | ------------------------------------------- | ------ | ------------------------ |
-| GET    | /api/attempts/:id/annotations               | ⬜     | 🔒 authenticate          |
-| POST   | /api/attempts/:id/annotations               | ⬜     | 🔒 requireTeacherOrAbove |
-| DELETE | /api/attempts/:id/annotations/:annotationId | ⬜     | 🔒 requireTeacherOrAbove |
+| Method | Route                    | Notes                             |
+| ------ | ------------------------ | --------------------------------- |
+| POST   | /api/uploads/signed-url  | Generate upload URL for recording |
+| POST   | /api/media/signed-read-url | Generate read URL for playback  |
 
-### Progress (Phase 8)
+### Notifications
 
-| Method | Route                    | Status | Guard                    |
-| ------ | ------------------------ | ------ | ------------------------ |
-| GET    | /api/progress/me         | ⬜     | 🔒 authenticate          |
-| GET    | /api/progress/:studentId | ⬜     | 🔒 requireTeacherOrAbove |
+| Method | Route                              | Notes                    |
+| ------ | ---------------------------------- | ------------------------ |
+| GET    | /api/notifications                 | List + unread count      |
+| POST   | /api/notifications/read-all        | Bulk mark read           |
+| POST   | /api/notifications/:id/read        | Single mark read         |
+| POST   | /api/devices/register              | Register push token      |
+| PATCH  | /api/devices/:id/disable           | Disable push token       |
 
-### Media (Phase 9)
+### Admin
 
-| Method | Route                 | Status | Guard           |
-| ------ | --------------------- | ------ | --------------- |
-| POST   | /api/media/upload-url | ⬜     | 🔒 authenticate |
-| GET    | /api/media/:key/url   | ⬜     | 🔒 authenticate |
-
-### Notifications (Phase 10)
-
-| Method | Route                       | Status | Guard           |
-| ------ | --------------------------- | ------ | --------------- |
-| GET    | /api/notifications          | ⬜     | 🔒 authenticate |
-| PATCH  | /api/notifications/:id/read | ⬜     | 🔒 authenticate |
-
-### Admin (Phase 11)
-
-| Method | Route                              | Status | Guard                |
-| ------ | ---------------------------------- | ------ | -------------------- |
-| GET    | /api/admin/assignment-requests     | ⬜     | 🔒 requireAdmin      |
-| PATCH  | /api/admin/assignment-requests/:id | ⬜     | 🔒 requireAdmin      |
-| GET    | /api/admin/users                   | ⬜     | 🔒 requireAdmin      |
-| PATCH  | /api/admin/users/:id/role          | ⬜     | 🔒 requireSuperAdmin |
+| Method | Route                                          | Guard         |
+| ------ | ---------------------------------------------- | ------------- |
+| GET    | /api/admin/students/unassigned                 | requireAdmin  |
+| GET    | /api/admin/assignment-requests                 | requireAdmin  |
+| POST   | /api/admin/assignment-requests/:id/assign-teacher | requireAdmin |
+| PATCH  | /api/admin/teacher-student-relationships/:id   | requireAdmin  |
+| GET    | /api/admin/teachers                            | requireAdmin  |
+| GET    | /api/admin/relationships                       | requireAdmin  |
 
 ---
 
-## Architecture Overview
+## Mobile Screen Map
 
-```mermaid
-graph TD
-    Mobile["React Native App\n(Expo Dev Client)"]
-    Backend["Node.js + Express\n(TypeScript)"]
-    SupabaseAuth["Supabase Auth\n(JWT issuer)"]
-    SupabaseDB["Supabase Postgres\n(primary datastore)"]
-    SupabaseStorage["Supabase Storage\n(audio / images)"]
-    QF["Quran.Foundation API\n(verse + word data)"]
+### Student (tabs)
 
-    Mobile -->|"Bearer JWT"| Backend
-    Backend -->|"getUser(token)"| SupabaseAuth
-    Backend -->|"service role queries"| SupabaseDB
-    Backend -->|"signed URL generation"| SupabaseStorage
-    Backend -->|"cache miss fetch"| QF
-    QF -->|"verse + word data"| Backend
-    Backend -->|"upsert"| SupabaseDB
+| Screen                  | Status | Notes                                              |
+| ----------------------- | ------ | -------------------------------------------------- |
+| Login / Register        | ✅     |                                                    |
+| Pending assignment      | ✅     | Shown until admin assigns a teacher                |
+| Assignments list        | ✅     | Status badges, relative dates                      |
+| Assignment detail       | ✅     | Page image (real 1300×2103 PNG), record button     |
+| Record & upload audio   | ✅     | expo-audio, signed URL upload                      |
+| Progress overview       | ✅     | Overall % bar + assigned/completed/revision stats  |
+| Notifications inbox     | ✅     | Unread highlight, mark read, mark all read         |
+| **Annotation viewer**   | 🔵     | Student can't see teacher marks on their attempt   |
+| **Surah/Juz drill-down**| 🔵     | Progress screen has no tappable breakdown          |
+| **Attempt history**     | 🔵     | Only current attempt shown on assignment detail    |
+
+### Teacher
+
+| Screen                      | Status | Notes                                             |
+| --------------------------- | ------ | ------------------------------------------------- |
+| Review queue                | ✅     | Pending submissions with attempt # and page info  |
+| Review screen               | ✅     | Page image + freehand canvas + audio playback     |
+| Mark complete / resubmit    | ✅     | Triggers notification to student                  |
+| **Student list**            | 🔵     | No screen to see all assigned students or history |
+| **Tap-to-word annotation**  | 🔵     | Glyph bounds uploaded; UI not built yet           |
+
+### Admin
+
+| Screen                  | Status | Notes                                           |
+| ----------------------- | ------ | ----------------------------------------------- |
+| Pending request queue   | ✅     |                                                 |
+| Assign teacher          | ✅     | Load/capacity display, full-teacher guard       |
+| Relationships list      | ✅     | Activate/deactivate with confirmation           |
+
+---
+
+## Remaining Work — Prioritised
+
+### P1 — Core feedback loop (students can't see their feedback)
+
+**Student annotation viewer**
+- New screen: `assignments/[id]/feedback/[attemptId].tsx`
+- Renders the Quran page image with teacher's annotation strokes overlaid
+- Uses existing `GET /annotations` (paginated) + `GET /annotation-markers` endpoints
+- Plays back teacher voice notes via `GET /media/signed-read-url`
+- Reuses the normalized-coordinate rendering logic already in the teacher review canvas
+- Entry point: "View Feedback" button on assignment detail when status = `reviewed` | `completed` | `needs_resubmission`
+
+### P2 — Progress drill-down (backend exists, UI missing)
+
+**Surah & Juz breakdown in progress screen**
+- Add tappable surah/juz cards to the existing progress screen
+- New screen: `progress/surah/[surahNumber].tsx` — page list with status dots
+- New screen: `progress/juz/[juzNumber].tsx` — same pattern
+- Calls `GET /api/student/progress/surahs/:n` and `/juz/:n`
+
+### P3 — Attempt history (backend exists, UI missing)
+
+**Attempt history on assignment detail**
+- Show a list of all past attempts (attempt #, date, status) below the current attempt
+- Calls existing `GET /submissions/:id/attempts`
+- Each row navigable to the feedback viewer for that specific attempt
+
+### P4 — Teacher student list
+
+**Teacher's student roster**
+- New screen in `(teacher)/` — lists all active students assigned to this teacher
+- Shows student name, page progress summary, last submission date
+- Tapping opens a student's submission history
+- Requires one new backend endpoint: `GET /api/teacher/students` (list with basic progress)
+
+### P5 — Push notifications
+
+**Register Expo push tokens**
+- On app launch (post-login), call `POST /api/devices/register` with the Expo token
+- The `NotificationService.sendPushNotification()` method already exists — just needs tokens populated
+- Test with a real device (simulators don't receive push)
+
+### P6 — Tap-to-word annotation (teacher)
+
+**Word selection in review screen**
+- Load `glyph-bounds.json` from the public bucket on review screen mount
+- Filter to the current page's word bounds
+- Map normalized coordinates back to canvas pixels
+- On tap: find the nearest word bounding box, create an annotation with `anchorType: 'word'`
+- Show a quick-label picker (mistake categories) after word selection
+
+---
+
+## Architecture Notes
+
+### Storage layout (Supabase)
+```
+student-recordings/{studentId}/{submissionId}/attempts/attempt-NNN.m4a
+teacher-voice-notes/{teacherId}/{submissionId}/{attemptId}/{annotationId}.m4a
+quran-page-images/mushaf-madani/page-NNN.png         (public bucket)
+quran-page-images/mushaf-madani/glyph-bounds.json    (public bucket, 88k words)
 ```
 
----
+### Key invariants
+- `submissions.current_attempt_id` → always the latest attempt
+- `student_page_progress` is the source of truth for page completion — only updated by `completeReview`
+- `student_progress_snapshots` is a derived read model — recalculated after every review, never triggers
+- Annotation coordinates are normalized 0–1 relative to rendered page dimensions
+- All signed URLs are ephemeral — never stored in DB, always generated on demand
+- Push is best-effort — in-app `notifications` table is the durable record
 
-## Key Data Flow: New Student First Login
-
-```mermaid
-sequenceDiagram
-    participant App
-    participant Backend
-    participant DB
-
-    App->>Backend: GET /api/me (Bearer token)
-    Backend->>DB: SELECT user_profiles WHERE user_id=?
-    DB-->>Backend: null (first login)
-    Backend->>DB: INSERT user_profiles (onboarding_status='pending_assignment')
-    Backend->>DB: INSERT student_assignment_requests
-    Note over DB: uq_student_one_pending_request\npartial unique index prevents\nduplicate on race condition
-    Backend-->>App: MeResponse {role:'student', onboardingStatus:'pending_assignment'}
-```
-
----
-
-## Key Data Flow: Submission + Attempt Creation
-
-```mermaid
-sequenceDiagram
-    participant Student
-    participant Backend
-    participant DB
-
-    Student->>Backend: POST /api/submissions
-    Backend->>DB: INSERT submissions (current_attempt_id=NULL)
-    Backend->>DB: INSERT submission_attempts (submission_id, student_id, quran_page_id)
-    Note over DB: Composite FK ensures\nattempt.student_id = submission.student_id\nattempt.quran_page_id = submission.quran_page_id
-    Backend->>DB: UPDATE submissions SET current_attempt_id=<new_attempt_id>
-    Backend-->>Student: SubmissionResponse
-```
-
----
-
-## Key Data Flow: Quran Content (Cache-First)
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Backend
-    participant DB
-    participant QF as Quran.Foundation
-
-    Client->>Backend: GET /api/quran/pages/1/content
-    Backend->>DB: SELECT quran_page_mappings WHERE page_number=1
-    alt Cache hit
-        DB-->>Backend: rows
-        Backend-->>Client: QuranPageContent (from cache)
-    else Cache miss
-        Backend->>QF: GET /verses/by_page/1?mushaf=1
-        QF-->>Backend: {verses: [...]}
-        Backend->>DB: UPSERT quran_pages
-        Backend->>DB: UPSERT quran_page_mappings (per surah)
-        Backend-->>Client: QuranPageContent
-    end
-```
-
----
-
-## Database Constraint Notes
-
-| Constraint                           | Table                       | Purpose                                                             |
-| ------------------------------------ | --------------------------- | ------------------------------------------------------------------- |
-| `uq_student_one_pending_request`     | student_assignment_requests | One pending request per student                                     |
-| `uq_student_one_assigned_request`    | student_assignment_requests | One assigned request per student                                    |
-| `uq_quran_page_mapping_page_surah`   | quran_page_mappings         | Idempotent upserts from QuranContentService                         |
-| `fk_attempt_submission_student_page` | submission_attempts         | Composite FK: attempt must match parent submission's student + page |
-| `fk_submissions_current_attempt`     | submissions                 | current_attempt_id → submission_attempts.id                         |
+### Database connections
+- `supabaseAdmin` (service role JWT) — all backend DB operations; bypasses RLS
+- `pg` Pool (DATABASE_URL) — removed; no longer required
+- Mobile app — Supabase Auth only (JWT issuance/refresh); all data through Express backend

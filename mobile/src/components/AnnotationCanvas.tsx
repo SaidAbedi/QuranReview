@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, clamp } from 'react-native-reanimated';
+import { Animated, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Path, Circle } from 'react-native-svg';
 import type { AnnotationPoint, AnnotationRow } from '@/types/api';
@@ -15,10 +14,9 @@ export interface LocalAnnotation {
   strokeColor?: string;
 }
 
-// Stroke colors per tool
 export const TOOL_COLORS: Record<string, string> = {
   freehand: '#0E7490',
-  circle: '#7C3AED',
+  circle:   '#7C3AED',
   underline: '#D97706',
   highlight: '#059669',
 };
@@ -57,24 +55,26 @@ function pointsToPath(points: AnnotationPoint[], w: number, h: number): string {
   return `${move} ${lines}`;
 }
 
-// Transform: scale around center then translate
-// Screen ← content:  screenX = (cx - W/2) * s + W/2 + tx
-// Content ← screen:  cx = (screenX - tx - W/2) / s + W/2
+// With transform: [scale, translateX, translateY] and RN scaling around center:
+//   screenX = (cx - W/2) * s + W/2 + tx
+// Inverse → normalized:
+//   normalizedX = [(screenX - tx - W/2) / s + W/2] / W
 function toNormalized(
-  screenX: number,
-  screenY: number,
-  s: number,
-  txVal: number,
-  tyVal: number,
-  w: number,
-  h: number,
+  sx: number, sy: number,
+  s: number, tx: number, ty: number,
+  w: number, h: number,
 ): AnnotationPoint {
-  const cx = (screenX - txVal - w / 2) / s + w / 2;
-  const cy = (screenY - tyVal - h / 2) / s + h / 2;
+  const cx = (sx - tx - w / 2) / s + w / 2;
+  const cy = (sy - ty - h / 2) / s + h / 2;
   return {
     x: Math.min(1, Math.max(0, cx / w)),
     y: Math.min(1, Math.max(0, cy / h)),
   };
+}
+
+function clampOffset(val: number, s: number, dim: number): number {
+  const max = (dim / 2) * (s - 1);
+  return Math.min(max, Math.max(-max, val));
 }
 
 export default function AnnotationCanvas({
@@ -88,94 +88,76 @@ export default function AnnotationCanvas({
   onAnnotationTap,
   readOnly = false,
 }: Props) {
-  // Zoom / pan shared values
-  const scale = useSharedValue(1);
-  const txAnim = useSharedValue(0);
-  const tyAnim = useSharedValue(0);
-  // Saved at gesture start so we can compute deltas
-  const baseScale = useSharedValue(1);
-  const baseTx = useSharedValue(0);
-  const baseTy = useSharedValue(0);
+  // Zoom / pan — plain Animated.Values (no Reanimated plugin needed)
+  const scaleAnim  = useRef(new Animated.Value(1)).current;
+  const txAnim     = useRef(new Animated.Value(0)).current;
+  const tyAnim     = useRef(new Animated.Value(0)).current;
+
+  // JS-side mirrors of the animated values so gesture math is cheap
+  const sRef  = useRef(1);
+  const txRef = useRef(0);
+  const tyRef = useRef(0);
+
+  // Saved at gesture start for delta computation
+  const baseS  = useRef(1);
+  const baseTx = useRef(0);
+  const baseTy = useRef(0);
 
   const [livePoints, setLivePoints] = useState<AnnotationPoint[]>([]);
   const strokeRef = useRef<AnnotationPoint[]>([]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: scale.value },
-      { translateX: txAnim.value },
-      { translateY: tyAnim.value },
-    ],
-  }));
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
-  // Clamp pan so content doesn't leave the container
-  function clampOffset(val: number, s: number, dim: number) {
-    'worklet';
-    const maxOff = (dim / 2) * (s - 1);
-    return clamp(val, -maxOff, maxOff);
+  function setTransform(s: number, tx: number, ty: number) {
+    sRef.current = s;
+    txRef.current = tx;
+    tyRef.current = ty;
+    scaleAnim.setValue(s);
+    txAnim.setValue(tx);
+    tyAnim.setValue(ty);
   }
 
   // ── Navigate gestures ──────────────────────────────────────────────────────
 
   const pinchGesture = Gesture.Pinch()
+    .runOnJS(true)
     .onStart(() => {
-      'worklet';
-      baseScale.value = scale.value;
-      baseTx.value = txAnim.value;
-      baseTy.value = tyAnim.value;
+      baseS.current  = sRef.current;
+      baseTx.current = txRef.current;
+      baseTy.current = tyRef.current;
     })
     .onUpdate((e) => {
-      'worklet';
-      const newScale = clamp(baseScale.value * e.scale, 1, 4);
-      scale.value = newScale;
-      // Keep focal point stationary
-      const rawTx = e.focalX - (e.focalX - width / 2 - baseTx.value) * (newScale / baseScale.value) - width / 2;
-      const rawTy = e.focalY - (e.focalY - height / 2 - baseTy.value) * (newScale / baseScale.value) - height / 2;
-      txAnim.value = clampOffset(rawTx, newScale, width);
-      tyAnim.value = clampOffset(rawTy, newScale, height);
+      const newS = Math.min(4, Math.max(1, baseS.current * e.scale));
+      // Keep focal point stationary during scale
+      const rawTx = e.focalX - (e.focalX - width / 2 - baseTx.current) * (newS / baseS.current) - width / 2;
+      const rawTy = e.focalY - (e.focalY - height / 2 - baseTy.current) * (newS / baseS.current) - height / 2;
+      setTransform(newS, clampOffset(rawTx, newS, width), clampOffset(rawTy, newS, height));
     })
     .onEnd(() => {
-      'worklet';
-      baseScale.value = scale.value;
-      baseTx.value = txAnim.value;
-      baseTy.value = tyAnim.value;
+      baseS.current  = sRef.current;
+      baseTx.current = txRef.current;
+      baseTy.current = tyRef.current;
     });
 
   const panNavGesture = Gesture.Pan()
-    .minPointers(2)
-    .onStart(() => {
-      'worklet';
-      baseTx.value = txAnim.value;
-      baseTy.value = tyAnim.value;
-    })
-    .onUpdate((e) => {
-      'worklet';
-      txAnim.value = clampOffset(baseTx.value + e.translationX, scale.value, width);
-      tyAnim.value = clampOffset(baseTy.value + e.translationY, scale.value, height);
-    })
-    .onEnd(() => {
-      'worklet';
-      baseTx.value = txAnim.value;
-      baseTy.value = tyAnim.value;
-    });
-
-  const singlePanNavGesture = Gesture.Pan()
     .minPointers(1)
     .maxPointers(1)
+    .runOnJS(true)
     .onStart(() => {
-      'worklet';
-      baseTx.value = txAnim.value;
-      baseTy.value = tyAnim.value;
+      baseTx.current = txRef.current;
+      baseTy.current = tyRef.current;
     })
     .onUpdate((e) => {
-      'worklet';
-      txAnim.value = clampOffset(baseTx.value + e.translationX, scale.value, width);
-      tyAnim.value = clampOffset(baseTy.value + e.translationY, scale.value, height);
+      const s = sRef.current;
+      setTransform(
+        s,
+        clampOffset(baseTx.current + e.translationX, s, width),
+        clampOffset(baseTy.current + e.translationY, s, height),
+      );
     })
     .onEnd(() => {
-      'worklet';
-      baseTx.value = txAnim.value;
-      baseTy.value = tyAnim.value;
+      baseTx.current = txRef.current;
+      baseTy.current = tyRef.current;
     });
 
   const tapGesture = Gesture.Tap()
@@ -184,12 +166,11 @@ export default function AnnotationCanvas({
     .runOnJS(true)
     .onEnd((e) => {
       if (!onAnnotationTap) return;
-      const s = scale.value;
-      const tx = txAnim.value;
-      const ty = tyAnim.value;
+      const s  = sRef.current;
+      const tx = txRef.current;
+      const ty = tyRef.current;
       const cx = (e.x - tx - width / 2) / s + width / 2;
       const cy = (e.y - ty - height / 2) / s + height / 2;
-      // Find annotation whose first point is within 20px in content space
       for (const ann of savedAnnotations) {
         if (!ann.points?.length) continue;
         const ax = ann.points[0].x * width;
@@ -203,8 +184,7 @@ export default function AnnotationCanvas({
 
   const navGesture = Gesture.Simultaneous(
     pinchGesture,
-    panNavGesture,
-    Gesture.Exclusive(tapGesture, singlePanNavGesture),
+    Gesture.Exclusive(tapGesture, panNavGesture),
   );
 
   // ── Draw gesture ───────────────────────────────────────────────────────────
@@ -215,12 +195,12 @@ export default function AnnotationCanvas({
     .minDistance(0)
     .runOnJS(true)
     .onBegin((e) => {
-      const pt = toNormalized(e.x, e.y, scale.value, txAnim.value, tyAnim.value, width, height);
+      const pt = toNormalized(e.x, e.y, sRef.current, txRef.current, tyRef.current, width, height);
       strokeRef.current = [pt];
       setLivePoints([pt]);
     })
     .onUpdate((e) => {
-      const pt = toNormalized(e.x, e.y, scale.value, txAnim.value, tyAnim.value, width, height);
+      const pt = toNormalized(e.x, e.y, sRef.current, txRef.current, tyRef.current, width, height);
       const pts = [...strokeRef.current, pt];
       strokeRef.current = pts;
       setLivePoints(pts);
@@ -232,12 +212,11 @@ export default function AnnotationCanvas({
       if (pts.length >= 2) onStrokeComplete?.(pts);
     })
     .onFinalize(() => {
-      // Ensure cleanup if gesture is cancelled
       strokeRef.current = [];
       setLivePoints([]);
     });
 
-  // Allow pinch zoom even in annotate mode
+  // Pinch zoom still works in annotate mode (2-finger vs 1-finger draw)
   const annotateGesture = Gesture.Simultaneous(pinchGesture, drawGesture);
 
   const activeGesture = readOnly
@@ -249,12 +228,14 @@ export default function AnnotationCanvas({
   return (
     <GestureDetector gesture={activeGesture}>
       <View style={[styles.container, { width, height }]}>
-        <Animated.View style={[styles.content, { width, height }, animatedStyle]}>
-          <Svg
-            width={width}
-            height={height}
-            style={StyleSheet.absoluteFill}
-          >
+        <Animated.View
+          style={[
+            styles.content,
+            { width, height },
+            { transform: [{ scale: scaleAnim }, { translateX: txAnim }, { translateY: tyAnim }] },
+          ]}
+        >
+          <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
             {/* Saved annotations from backend */}
             {savedAnnotations.map((ann) =>
               ann.points && ann.points.length >= 2 ? (
@@ -270,26 +251,27 @@ export default function AnnotationCanvas({
               ) : null,
             )}
 
-            {/* Tap targets — colored dot at first point of each saved annotation */}
-            {!readOnly && mode === 'navigate' && savedAnnotations.map((ann) => {
-              if (!ann.points?.length) return null;
-              const pt = ann.points[0];
-              const color = ann.mistakeType
-                ? (MISTAKE_DOT_COLORS[ann.mistakeType] ?? '#0E7490')
-                : '#0E7490';
-              return (
-                <Circle
-                  key={`dot-${ann.id}`}
-                  cx={pt.x * width}
-                  cy={pt.y * height}
-                  r={9}
-                  fill={color}
-                  fillOpacity={0.85}
-                  stroke="#fff"
-                  strokeWidth={1.5}
-                />
-              );
-            })}
+            {/* Tap targets in navigate mode */}
+            {!readOnly && mode === 'navigate' &&
+              savedAnnotations.map((ann) => {
+                if (!ann.points?.length) return null;
+                const pt = ann.points[0];
+                const color = ann.mistakeType
+                  ? (MISTAKE_DOT_COLORS[ann.mistakeType] ?? '#0E7490')
+                  : '#0E7490';
+                return (
+                  <Circle
+                    key={`dot-${ann.id}`}
+                    cx={pt.x * width}
+                    cy={pt.y * height}
+                    r={9}
+                    fill={color}
+                    fillOpacity={0.85}
+                    stroke="#fff"
+                    strokeWidth={1.5}
+                  />
+                );
+              })}
 
             {/* Local optimistic annotations */}
             {localAnnotations.map((local) =>

@@ -160,6 +160,8 @@ export default function FeedbackViewerScreen() {
                 width={canvasLayout.width}
                 height={canvasLayout.height}
                 savedAnnotations={annotations}
+                localAnnotations={[]}
+                mode="navigate"
                 readOnly
               />
             )

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,19 +10,28 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { getAnnotations, batchSaveAnnotations } from '@/api/annotations';
+import { createAnnotation, deleteAnnotation, getAnnotations, updateAnnotation } from '@/api/annotations';
 import { getQuranPage } from '@/api/quran';
 import { completeReview, getMistakeCategories, getAttemptHistory } from '@/api/teacher';
 import AudioPlayerBar from '@/components/AudioPlayerBar';
-import AnnotationCanvas from '@/components/AnnotationCanvas';
+import AnnotationCanvas, { LocalAnnotation, TOOL_COLORS } from '@/components/AnnotationCanvas';
+import AnnotationDetailsSheet from '@/components/AnnotationDetailsSheet';
 import type {
-  AnnotationRow,
   AnnotationPoint,
+  AnnotationRow,
   AttemptRow,
   MistakeCategoryRow,
-  MistakeOptionRow,
-  CreateAnnotationInput,
 } from '@/types/api';
+
+type Mode = 'navigate' | 'annotate';
+type Tool = 'freehand' | 'circle' | 'underline' | 'highlight';
+
+const TOOLS: { key: Tool; label: string }[] = [
+  { key: 'freehand', label: 'Pen' },
+  { key: 'circle', label: 'Circle' },
+  { key: 'underline', label: 'Line' },
+  { key: 'highlight', label: 'Mark' },
+];
 
 const ATTEMPT_STATUS_LABELS: Record<string, string> = {
   submitted: 'Submitted',
@@ -40,6 +48,11 @@ function relativeDate(iso: string | null): string {
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   return `${days}d ago`;
+}
+
+let localIdCounter = 0;
+function nextLocalId() {
+  return `local-${Date.now()}-${localIdCounter++}`;
 }
 
 export default function ReviewDetailScreen() {
@@ -62,30 +75,41 @@ export default function ReviewDetailScreen() {
     assignmentTitle: string;
   }>();
 
+  // ── Data state ─────────────────────────────────────────────────────────────
   const [savedAnnotations, setSavedAnnotations] = useState<AnnotationRow[]>([]);
-  const [pendingPoints, setPendingPoints] = useState<AnnotationPoint[][]>([]);
+  const [localAnnotations, setLocalAnnotations] = useState<LocalAnnotation[]>([]);
   const [categories, setCategories] = useState<MistakeCategoryRow[]>([]);
-  const [selectedOption, setSelectedOption] = useState<MistakeOptionRow | null>(null);
-  const [showMistakePicker, setShowMistakePicker] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [savingAnnotations, setSavingAnnotations] = useState(false);
-  const [loadingAnnotations, setLoadingAnnotations] = useState(true);
   const [attemptHistory, setAttemptHistory] = useState<AttemptRow[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [canvasLayout, setCanvasLayout] = useState<{ width: number; height: number } | null>(null);
   const [resolvedPageImageUrl, setResolvedPageImageUrl] = useState<string | null>(
     pageImageUrl ?? null,
   );
   const [pageAspectRatio, setPageAspectRatio] = useState<number>(0.7);
-  const saveLock = useRef(false);
+  const [canvasLayout, setCanvasLayout] = useState<{ width: number; height: number } | null>(null);
+  const [loadingAnnotations, setLoadingAnnotations] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
+  // ── Annotation UX state ────────────────────────────────────────────────────
+  const [mode, setMode] = useState<Mode>('navigate');
+  const [activeTool, setActiveTool] = useState<Tool>('freehand');
+  const [detailsAnnotation, setDetailsAnnotation] = useState<AnnotationRow | null>(null);
+
+  // ── Load ───────────────────────────────────────────────────────────────────
   const loadAnnotations = useCallback(async () => {
     setLoadingAnnotations(true);
     try {
-      const result = await getAnnotations(submissionId, attemptId);
-      setSavedAnnotations(result.data);
+      const all: AnnotationRow[] = [];
+      let cursor: string | undefined;
+      let hasMore = true;
+      while (hasMore) {
+        const result = await getAnnotations(submissionId, attemptId, cursor);
+        all.push(...result.data);
+        hasMore = result.hasMore;
+        cursor = result.nextCursor;
+      }
+      setSavedAnnotations(all);
     } catch {
-      // Non-fatal — annotations may just not exist yet.
+      // Non-fatal
     } finally {
       setLoadingAnnotations(false);
     }
@@ -105,78 +129,113 @@ export default function ReviewDetailScreen() {
     }
   }, [loadAnnotations, submissionId, pageNumber]);
 
-  const handleStrokeComplete = (points: AnnotationPoint[]) => {
-    setPendingPoints((prev) => [...prev, points]);
-  };
+  // ── Stroke complete → auto-save ────────────────────────────────────────────
+  const handleStrokeComplete = useCallback(
+    async (points: AnnotationPoint[]) => {
+      const localId = nextLocalId();
+      const strokeColor = TOOL_COLORS[activeTool] ?? TOOL_COLORS.freehand;
 
-  const handleUndoLast = () => {
-    setPendingPoints((prev) => prev.slice(0, -1));
-  };
+      // 1. Optimistically add the stroke as 'saving'
+      const local: LocalAnnotation = { localId, points, status: 'saving', strokeColor };
+      setLocalAnnotations((prev) => [...prev, local]);
 
-  const handleSaveAnnotations = async () => {
-    if (pendingPoints.length === 0 || saveLock.current) return;
-    saveLock.current = true;
-    setSavingAnnotations(true);
-    try {
-      const inputs: CreateAnnotationInput[] = pendingPoints.map((pts) => ({
-        annotationType: 'freehand',
-        anchorType: 'page_region',
-        points: pts,
-        style: { strokeColor: '#0E7490', strokeWidth: 3 },
-        ...(selectedOption
-          ? { mistakeOptionId: selectedOption.id, quickLabel: selectedOption.label }
-          : {}),
-      }));
-      const saved = await batchSaveAnnotations(submissionId, attemptId, inputs);
-      setSavedAnnotations((prev) => [...prev, ...saved]);
-      setPendingPoints([]);
-      setSelectedOption(null);
-    } catch (e) {
-      Alert.alert('Save Error', e instanceof Error ? e.message : 'Could not save annotations');
-    } finally {
-      setSavingAnnotations(false);
-      saveLock.current = false;
-    }
-  };
+      try {
+        // 2. POST to backend
+        const saved = await createAnnotation(submissionId, attemptId, {
+          annotationType: 'freehand',
+          anchorType: 'page_region',
+          points,
+          style: { strokeColor, strokeWidth: 3 },
+        });
 
-  // Returns true if annotations were saved (or there was nothing to save).
-  // Returns false and shows an error if save failed — caller must not proceed.
-  const autoSavePendingAnnotations = async (): Promise<boolean> => {
-    if (pendingPoints.length === 0) return true;
-    if (saveLock.current) return false;
-    saveLock.current = true;
-    setSavingAnnotations(true);
-    try {
-      const inputs: CreateAnnotationInput[] = pendingPoints.map((pts) => ({
-        annotationType: 'freehand',
-        anchorType: 'page_region',
-        points: pts,
-        style: { strokeColor: '#0E7490', strokeWidth: 3 },
-        ...(selectedOption
-          ? { mistakeOptionId: selectedOption.id, quickLabel: selectedOption.label }
-          : {}),
-      }));
-      const saved = await batchSaveAnnotations(submissionId, attemptId, inputs);
-      setSavedAnnotations((prev) => [...prev, ...saved]);
-      setPendingPoints([]);
-      setSelectedOption(null);
-      return true;
-    } catch (e) {
-      Alert.alert(
-        'Annotations Not Saved',
-        'Your annotations could not be saved. Please try again before completing the review.',
+        // 3. Move from local to saved
+        setLocalAnnotations((prev) => prev.filter((a) => a.localId !== localId));
+        setSavedAnnotations((prev) => [...prev, saved]);
+
+        // 4. Open details sheet so teacher can add label/note
+        setDetailsAnnotation(saved);
+      } catch {
+        // 5. Mark as failed so teacher can retry or delete
+        setLocalAnnotations((prev) =>
+          prev.map((a) => (a.localId === localId ? { ...a, status: 'failed' } : a)),
+        );
+      }
+    },
+    [submissionId, attemptId, activeTool],
+  );
+
+  // ── Annotation tap → open details ─────────────────────────────────────────
+  const handleAnnotationTap = useCallback((ann: AnnotationRow) => {
+    setDetailsAnnotation(ann);
+  }, []);
+
+  // ── Retry failed local annotation ─────────────────────────────────────────
+  const handleRetryFailed = useCallback(
+    async (local: LocalAnnotation) => {
+      const strokeColor = local.strokeColor ?? TOOL_COLORS.freehand;
+      setLocalAnnotations((prev) =>
+        prev.map((a) => (a.localId === local.localId ? { ...a, status: 'saving' } : a)),
       );
-      return false;
-    } finally {
-      setSavingAnnotations(false);
-      saveLock.current = false;
+      try {
+        const saved = await createAnnotation(submissionId, attemptId, {
+          annotationType: 'freehand',
+          anchorType: 'page_region',
+          points: local.points,
+          style: { strokeColor, strokeWidth: 3 },
+        });
+        setLocalAnnotations((prev) => prev.filter((a) => a.localId !== local.localId));
+        setSavedAnnotations((prev) => [...prev, saved]);
+        setDetailsAnnotation(saved);
+      } catch {
+        setLocalAnnotations((prev) =>
+          prev.map((a) => (a.localId === local.localId ? { ...a, status: 'failed' } : a)),
+        );
+        Alert.alert('Save Failed', 'Could not save this annotation. Check your connection.');
+      }
+    },
+    [submissionId, attemptId],
+  );
+
+  // ── Delete failed local annotation ────────────────────────────────────────
+  const handleDiscardFailed = useCallback((localId: string) => {
+    setLocalAnnotations((prev) => prev.filter((a) => a.localId !== localId));
+  }, []);
+
+  // ── Update annotation metadata ────────────────────────────────────────────
+  const handleUpdateMetadata = useCallback(
+    async (
+      annotationId: string,
+      input: { mistakeOptionId?: string; quickLabel?: string; noteText?: string },
+    ) => {
+      const updated = await updateAnnotation(annotationId, input);
+      setSavedAnnotations((prev) =>
+        prev.map((a) => (a.id === annotationId ? updated : a)),
+      );
+    },
+    [],
+  );
+
+  // ── Delete saved annotation ────────────────────────────────────────────────
+  const handleDeleteSaved = useCallback(async (annotationId: string) => {
+    // Optimistically remove
+    setSavedAnnotations((prev) => prev.filter((a) => a.id !== annotationId));
+    try {
+      await deleteAnnotation(annotationId);
+    } catch {
+      // Restore on failure
+      loadAnnotations();
+      throw new Error('Delete failed');
     }
-  };
+  }, [loadAnnotations]);
 
-  const handleCompleteReview = async (pageStatus: 'completed' | 'needs_resubmission') => {
-    const didSave = await autoSavePendingAnnotations();
-    if (!didSave) return;
+  // ── Complete review ────────────────────────────────────────────────────────
+  const hasPendingSaves = localAnnotations.some((a) => a.status === 'saving');
 
+  const handleCompleteReview = (pageStatus: 'completed' | 'needs_resubmission') => {
+    if (hasPendingSaves) {
+      Alert.alert('Saving…', 'Please wait for annotations to finish saving.');
+      return;
+    }
     const label = pageStatus === 'completed' ? 'Mark as Complete' : 'Request Another Attempt';
     const body =
       pageStatus === 'completed'
@@ -209,12 +268,17 @@ export default function ReviewDetailScreen() {
   };
 
   const pageTitle = `Page ${pageNumber || '?'}${assignmentTitle ? ` — ${assignmentTitle}` : ''}`;
-  const busy = submitting || savingAnnotations;
+  const failedAnnotations = localAnnotations.filter((a) => a.status === 'failed');
 
   return (
     <>
       <Stack.Screen options={{ title: studentName || 'Review' }} />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        scrollEnabled={mode === 'navigate'}
+      >
         {/* Meta row */}
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>{pageTitle}</Text>
@@ -245,6 +309,7 @@ export default function ReviewDetailScreen() {
               <Text style={styles.placeholderText}>Quran page image unavailable</Text>
             </View>
           )}
+
           {loadingAnnotations ? (
             <View style={styles.canvasLoading}>
               <ActivityIndicator color="#1B4F72" />
@@ -255,65 +320,119 @@ export default function ReviewDetailScreen() {
                 width={canvasLayout.width}
                 height={canvasLayout.height}
                 savedAnnotations={savedAnnotations}
+                localAnnotations={localAnnotations}
+                mode={mode}
+                strokeColor={TOOL_COLORS[activeTool]}
                 onStrokeComplete={handleStrokeComplete}
+                onAnnotationTap={handleAnnotationTap}
               />
             )
           )}
         </View>
 
-        {/* Annotation toolbar */}
-        <View style={styles.toolbar}>
+        {/* Failed annotation banners */}
+        {failedAnnotations.map((local) => (
+          <View key={local.localId} style={styles.failedBanner}>
+            <Text style={styles.failedText}>⚠ Annotation failed to save</Text>
+            <View style={styles.failedActions}>
+              <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={() => handleRetryFailed(local)}
+              >
+                <Text style={styles.retryBtnText}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.discardBtn}
+                onPress={() => handleDiscardFailed(local.localId)}
+              >
+                <Text style={styles.discardBtnText}>Discard</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+
+        {/* Mode + tool bar */}
+        <View style={styles.modeBar}>
+          {/* Navigate / Annotate toggle */}
           <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={handleUndoLast}
-            disabled={pendingPoints.length === 0}
+            style={[styles.modeBtn, mode === 'navigate' && styles.modeBtnActive]}
+            onPress={() => setMode('navigate')}
           >
-            <Text style={[styles.toolBtnText, pendingPoints.length === 0 && styles.disabled]}>
-              Undo
+            <Text style={[styles.modeBtnText, mode === 'navigate' && styles.modeBtnTextActive]}>
+              Navigate
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
-            style={styles.toolBtn}
-            onPress={() => setShowMistakePicker(true)}
+            style={[styles.modeBtn, mode === 'annotate' && styles.modeBtnActive]}
+            onPress={() => setMode('annotate')}
           >
-            <Text style={styles.toolBtnText}>
-              {selectedOption ? selectedOption.label : 'Label mistake'}
+            <Text style={[styles.modeBtnText, mode === 'annotate' && styles.modeBtnTextActive]}>
+              Annotate
             </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.toolBtn, styles.saveBtn]}
-            onPress={handleSaveAnnotations}
-            disabled={pendingPoints.length === 0 || savingAnnotations}
-          >
-            {savingAnnotations ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={[styles.toolBtnText, styles.saveBtnText]}>
-                Save ({pendingPoints.length})
-              </Text>
-            )}
           </TouchableOpacity>
         </View>
+
+        {/* Tool picker — only visible in annotate mode */}
+        {mode === 'annotate' && (
+          <View style={styles.toolBar}>
+            {TOOLS.map((tool) => (
+              <TouchableOpacity
+                key={tool.key}
+                style={[
+                  styles.toolBtn,
+                  activeTool === tool.key && { backgroundColor: TOOL_COLORS[tool.key] },
+                ]}
+                onPress={() => setActiveTool(tool.key)}
+              >
+                <View
+                  style={[
+                    styles.toolColorDot,
+                    { backgroundColor: TOOL_COLORS[tool.key] },
+                    activeTool === tool.key && styles.toolColorDotActive,
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.toolBtnText,
+                    activeTool === tool.key && styles.toolBtnTextActive,
+                  ]}
+                >
+                  {tool.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Annotation count */}
+        {!loadingAnnotations && (
+          <Text style={styles.annotationCount}>
+            {savedAnnotations.length === 0
+              ? 'No annotations yet'
+              : `${savedAnnotations.length} annotation${savedAnnotations.length !== 1 ? 's' : ''}`}
+            {localAnnotations.filter((a) => a.status === 'saving').length > 0
+              ? ' · saving…'
+              : ''}
+          </Text>
+        )}
 
         {/* Review actions */}
         <View style={styles.actions}>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.completeBtn, busy && styles.disabledBtn]}
+            style={[styles.actionBtn, styles.completeBtn, submitting && styles.disabledBtn]}
             onPress={() => handleCompleteReview('completed')}
-            disabled={busy}
+            disabled={submitting}
           >
-            {busy && submitting ? (
+            {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.actionBtnText}>Mark as Complete</Text>
             )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.resubmitBtn, busy && styles.disabledBtn]}
+            style={[styles.actionBtn, styles.resubmitBtn, submitting && styles.disabledBtn]}
             onPress={() => handleCompleteReview('needs_resubmission')}
-            disabled={busy}
+            disabled={submitting}
           >
             <Text style={[styles.actionBtnText, styles.resubmitBtnText]}>
               Request Another Attempt
@@ -359,63 +478,22 @@ export default function ReviewDetailScreen() {
         )}
       </ScrollView>
 
-      {/* Mistake picker modal */}
-      <Modal
-        visible={showMistakePicker}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowMistakePicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Select Mistake Type</Text>
-            <ScrollView style={styles.modalScroll}>
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => {
-                  setSelectedOption(null);
-                  setShowMistakePicker(false);
-                }}
-              >
-                <Text style={styles.optionLabel}>— No label —</Text>
-              </TouchableOpacity>
-              {categories.map((cat) => (
-                <View key={cat.id}>
-                  <Text style={styles.categoryLabel}>{cat.label}</Text>
-                  {cat.options.map((opt) => (
-                    <TouchableOpacity
-                      key={opt.id}
-                      style={[
-                        styles.optionRow,
-                        selectedOption?.id === opt.id && styles.optionSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedOption(opt);
-                        setShowMistakePicker(false);
-                      }}
-                    >
-                      <Text style={styles.optionLabel}>{opt.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ))}
-            </ScrollView>
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => setShowMistakePicker(false)}
-            >
-              <Text style={styles.modalCloseText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* Annotation details bottom sheet */}
+      <AnnotationDetailsSheet
+        visible={detailsAnnotation !== null}
+        annotation={detailsAnnotation}
+        categories={categories}
+        onUpdateMetadata={handleUpdateMetadata}
+        onDelete={handleDeleteSaved}
+        onClose={() => setDetailsAnnotation(null)}
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: '#F8F9FA' },
-  content: { padding: 16, gap: 16, paddingBottom: 40 },
+  content: { padding: 16, gap: 12, paddingBottom: 40 },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between' },
   metaText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
   canvasWrapper: {
@@ -439,21 +517,82 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  toolbar: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  // Failed banners
+  failedBanner: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 12,
+    gap: 8,
+  },
+  failedText: { fontSize: 13, color: '#DC2626', fontWeight: '500' },
+  failedActions: { flexDirection: 'row', gap: 8 },
+  retryBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#DC2626',
+  },
+  retryBtnText: { fontSize: 13, color: '#fff', fontWeight: '600' },
+  discardBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DC2626',
+  },
+  discardBtnText: { fontSize: 13, color: '#DC2626', fontWeight: '600' },
+  // Mode bar
+  modeBar: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  modeBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
+  modeBtnText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+  modeBtnTextActive: { color: '#1B4F72' },
+  // Tool bar
+  toolBar: {
+    flexDirection: 'row',
+    gap: 6,
+  },
   toolBtn: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#E5E7EB',
   },
-  toolBtnText: { fontSize: 13, color: '#374151', fontWeight: '600', textAlign: 'center' },
-  saveBtn: { backgroundColor: '#1B4F72', borderColor: '#1B4F72' },
-  saveBtnText: { color: '#fff' },
-  disabled: { color: '#D1D5DB' },
+  toolColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  toolColorDotActive: {
+    backgroundColor: '#fff',
+  },
+  toolBtnText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  toolBtnTextActive: { color: '#fff' },
+  annotationCount: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  // Review actions
   actions: { gap: 10 },
   actionBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   completeBtn: { backgroundColor: '#1B4F72' },
@@ -492,34 +631,4 @@ const styles = StyleSheet.create({
   historyCurrentText: { color: '#1D4ED8', fontWeight: '700' },
   historyStatus: { fontSize: 12, color: '#6B7280' },
   historyDate: { fontSize: 12, color: '#9CA3AF', minWidth: 60, textAlign: 'right' },
-  // Mistake picker modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '70%',
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 12 },
-  modalScroll: { maxHeight: 360 },
-  categoryLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#9CA3AF',
-    textTransform: 'uppercase',
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  optionRow: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8 },
-  optionSelected: { backgroundColor: '#EFF6FF' },
-  optionLabel: { fontSize: 15, color: '#111827' },
-  modalClose: {
-    marginTop: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  modalCloseText: { fontSize: 15, color: '#6B7280' },
 });

@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
@@ -68,13 +70,15 @@ export default function RootLayout() {
   }, [isLoading, session, user, segments]);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="(teacher)" />
-      <Stack.Screen name="(admin)" />
-      <Stack.Screen name="pending" />
-      <Stack.Screen name="assignments" />
-    </Stack>
+    <GestureHandlerRootView style={StyleSheet.absoluteFill}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(teacher)" />
+        <Stack.Screen name="(admin)" />
+        <Stack.Screen name="pending" />
+        <Stack.Screen name="assignments" />
+      </Stack>
+    </GestureHandlerRootView>
   );
 }

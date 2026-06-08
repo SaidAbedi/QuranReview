@@ -10,6 +10,16 @@ export const getAnnotations = (
     `/submissions/${submissionId}/attempts/${attemptId}/annotations${cursor ? `?cursor=${cursor}` : ''}`,
   );
 
+export const createAnnotation = (
+  submissionId: string,
+  attemptId: string,
+  input: CreateAnnotationInput,
+): Promise<AnnotationRow> =>
+  api.post<AnnotationRow>(
+    `/submissions/${submissionId}/attempts/${attemptId}/annotations`,
+    input,
+  );
+
 export const batchSaveAnnotations = (
   submissionId: string,
   attemptId: string,
@@ -19,6 +29,12 @@ export const batchSaveAnnotations = (
     `/submissions/${submissionId}/attempts/${attemptId}/annotations/batch`,
     { annotations },
   );
+
+export const updateAnnotation = (
+  annotationId: string,
+  input: Partial<Pick<CreateAnnotationInput, 'mistakeType' | 'mistakeOptionId' | 'quickLabel' | 'noteText'>>,
+): Promise<AnnotationRow> =>
+  api.patch<AnnotationRow>(`/annotations/${annotationId}`, input);
 
 export const deleteAnnotation = (annotationId: string): Promise<void> =>
   api.delete<void>(`/annotations/${annotationId}`);

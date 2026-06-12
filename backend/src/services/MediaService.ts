@@ -2,7 +2,7 @@ import { supabaseAdmin } from '../db/client';
 import { env } from '../config/env';
 import { AppError, UserRole } from '../types';
 
-export type MediaFileType = 'student_recording' | 'teacher_voice_note';
+export type MediaFileType = 'student_recording' | 'teacher_voice_note' | 'review_voice_note';
 
 export interface SignedUploadUrlResult {
   uploadUrl: string;
@@ -78,11 +78,6 @@ export class MediaService {
   }
 
   // Generates a signed upload URL for a student recording.
-  // Called by SubmissionService/AttemptService after the attempt row is created,
-  // so submissionId and attemptNumber are already known and the key is deterministic.
-  //
-  // Also exposed via POST /api/uploads/signed-url as a "refresh" endpoint
-  // when the original upload URL has expired before the mobile client could upload.
   async getSignedUploadUrl(
     userId: string,
     fileType: MediaFileType,
@@ -91,7 +86,7 @@ export class MediaService {
     attemptNumber: number,
   ): Promise<SignedUploadUrlResult> {
     if (fileType !== 'student_recording') {
-      throw new AppError(400, 'Only student_recording uploads are supported in Phase 5');
+      throw new AppError(400, 'Only student_recording uploads are supported');
     }
 
     await this.ensureBuckets();
@@ -115,25 +110,93 @@ export class MediaService {
     };
   }
 
-  // Returns a short-lived signed read URL for a stored recording.
-  // Enforces ownership before signing:
-  //   student  — must own the recording (userId embedded in key path)
-  //   teacher  — must have an active teacher_student_relationships row with the recording owner
-  //   admin/super_admin — unrestricted
+  // Key format: teacher-voice-notes/{teacherId}/{submissionId}/{attemptId}/review.m4a
+  static buildReviewVoiceNoteKey(
+    teacherId: string,
+    submissionId: string,
+    attemptId: string,
+  ): string {
+    return `${BUCKET_TEACHER_VOICE_NOTES}/${teacherId}/${submissionId}/${attemptId}/review.m4a`;
+  }
+
+  async getReviewVoiceNoteUploadUrl(
+    teacherId: string,
+    submissionId: string,
+    attemptId: string,
+  ): Promise<SignedUploadUrlResult> {
+    await this.ensureBuckets();
+
+    const objectPath = `${teacherId}/${submissionId}/${attemptId}/review.m4a`;
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(BUCKET_TEACHER_VOICE_NOTES)
+      .createSignedUploadUrl(objectPath);
+
+    if (error || !data) {
+      throw new AppError(503, `Failed to create review voice note upload URL: ${error?.message ?? 'unknown'}`);
+    }
+
+    const expiresAt = new Date(Date.now() + UPLOAD_EXPIRES_IN_SECONDS * 1000).toISOString();
+
+    return {
+      uploadUrl: data.signedUrl,
+      storageKey: `${BUCKET_TEACHER_VOICE_NOTES}/${objectPath}`,
+      expiresAt,
+    };
+  }
+
+  // Key format (§13.2): teacher-voice-notes/{teacherId}/{submissionId}/{attemptId}/{annotationId}.m4a
+  static buildVoiceNoteKey(
+    teacherId: string,
+    submissionId: string,
+    attemptId: string,
+    annotationId: string,
+  ): string {
+    return `${BUCKET_TEACHER_VOICE_NOTES}/${teacherId}/${submissionId}/${attemptId}/${annotationId}.m4a`;
+  }
+
+  async getVoiceNoteUploadUrl(
+    teacherId: string,
+    submissionId: string,
+    attemptId: string,
+    annotationId: string,
+  ): Promise<SignedUploadUrlResult> {
+    await this.ensureBuckets();
+
+    const objectPath = `${teacherId}/${submissionId}/${attemptId}/${annotationId}.m4a`;
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(BUCKET_TEACHER_VOICE_NOTES)
+      .createSignedUploadUrl(objectPath);
+
+    if (error || !data) {
+      throw new AppError(503, `Failed to create voice note upload URL: ${error?.message ?? 'unknown'}`);
+    }
+
+    const expiresAt = new Date(Date.now() + UPLOAD_EXPIRES_IN_SECONDS * 1000).toISOString();
+
+    return {
+      uploadUrl: data.signedUrl,
+      storageKey: `${BUCKET_TEACHER_VOICE_NOTES}/${objectPath}`,
+      expiresAt,
+    };
+  }
+
+  // Returns a short-lived signed read URL for a stored recording or voice note.
   async getSignedReadUrl(
     requestingUserId: string,
     mediaType: MediaFileType,
     storageKey: string,
     role: UserRole = 'student',
   ): Promise<SignedReadUrlResult> {
-    if (mediaType !== 'student_recording') {
-      throw new AppError(400, 'Only student_recording read URLs are supported in Phase 5');
+    await this.ensureBuckets();
+
+    if (mediaType === 'teacher_voice_note' || mediaType === 'review_voice_note') {
+      return this.getVoiceNoteReadUrl(storageKey);
     }
 
-    await this.ensureBuckets();
     await this.verifyReadAccess(storageKey, requestingUserId, role);
 
-    // Strip the bucket prefix before calling the storage API.
     const objectPath = storageKey.startsWith(`${BUCKET_STUDENT_RECORDINGS}/`)
       ? storageKey.slice(`${BUCKET_STUDENT_RECORDINGS}/`.length)
       : storageKey;
@@ -144,6 +207,23 @@ export class MediaService {
 
     if (error || !data) {
       throw new AppError(503, `Failed to create read URL: ${error?.message ?? 'unknown'}`);
+    }
+
+    const expiresAt = new Date(Date.now() + READ_EXPIRES_IN_SECONDS * 1000).toISOString();
+    return { url: data.signedUrl, expiresAt };
+  }
+
+  private async getVoiceNoteReadUrl(storageKey: string): Promise<SignedReadUrlResult> {
+    const objectPath = storageKey.startsWith(`${BUCKET_TEACHER_VOICE_NOTES}/`)
+      ? storageKey.slice(`${BUCKET_TEACHER_VOICE_NOTES}/`.length)
+      : storageKey;
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(BUCKET_TEACHER_VOICE_NOTES)
+      .createSignedUrl(objectPath, READ_EXPIRES_IN_SECONDS);
+
+    if (error || !data) {
+      throw new AppError(503, `Failed to create voice note read URL: ${error?.message ?? 'unknown'}`);
     }
 
     const expiresAt = new Date(Date.now() + READ_EXPIRES_IN_SECONDS * 1000).toISOString();

@@ -2,36 +2,67 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import {
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  RecordingPresets,
+} from 'expo-audio';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { createAnnotation, deleteAnnotation, getAnnotations, updateAnnotation } from '@/api/annotations';
+import {
+  createAnnotation,
+  deleteAnnotation,
+  getAnnotations,
+  updateAnnotation,
+} from '@/api/annotations';
 import { getQuranPage } from '@/api/quran';
-import { completeReview, getMistakeCategories, getAttemptHistory } from '@/api/teacher';
+import {
+  completeReview,
+  deleteReviewVoiceNote,
+  getAttemptHistory,
+  getMistakeCategories,
+  getReviewVoiceNote,
+  getReviewVoiceNoteReadUrl,
+  getReviewVoiceNoteUploadUrl,
+  saveReviewVoiceNote,
+} from '@/api/teacher';
 import AudioPlayerBar from '@/components/AudioPlayerBar';
-import AnnotationCanvas, { LocalAnnotation, TOOL_COLORS } from '@/components/AnnotationCanvas';
+import AnnotationCanvas, { LocalAnnotation } from '@/components/AnnotationCanvas';
 import AnnotationDetailsSheet from '@/components/AnnotationDetailsSheet';
 import type {
   AnnotationPoint,
   AnnotationRow,
   AttemptRow,
   MistakeCategoryRow,
+  ReviewVoiceNoteRow,
 } from '@/types/api';
 
-type Mode = 'navigate' | 'annotate';
-type Tool = 'freehand' | 'circle' | 'underline' | 'highlight';
+let UploadModule: {
+  uploadAsync: typeof import('expo-file-system/legacy').uploadAsync;
+  FileSystemUploadType: typeof import('expo-file-system/legacy').FileSystemUploadType;
+} | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  UploadModule = require('expo-file-system/legacy');
+} catch { /* not available in this runtime */ }
 
-const TOOLS: { key: Tool; label: string }[] = [
-  { key: 'freehand', label: 'Pen' },
-  { key: 'circle', label: 'Circle' },
-  { key: 'underline', label: 'Line' },
-  { key: 'highlight', label: 'Mark' },
-];
+type RvnState = 'idle' | 'recording' | 'uploading' | 'done';
+
+function formatRvnDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
 
 const ATTEMPT_STATUS_LABELS: Record<string, string> = {
   submitted: 'Submitted',
@@ -51,48 +82,47 @@ function relativeDate(iso: string | null): string {
 }
 
 let localIdCounter = 0;
-function nextLocalId() {
-  return `local-${Date.now()}-${localIdCounter++}`;
-}
+function nextLocalId() { return `local-${Date.now()}-${localIdCounter++}`; }
 
 export default function ReviewDetailScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const {
-    submissionId,
-    attemptId,
-    pageNumber,
-    pageImageUrl,
-    studentName,
-    attemptNumber,
-    assignmentTitle,
+    submissionId, attemptId, pageNumber,
+    pageImageUrl: initialPageImageUrl,
+    studentName, attemptNumber, assignmentTitle,
   } = useLocalSearchParams<{
-    submissionId: string;
-    attemptId: string;
-    pageNumber: string;
-    pageImageUrl: string;
-    studentName: string;
-    attemptNumber: string;
-    assignmentTitle: string;
+    submissionId: string; attemptId: string; pageNumber: string;
+    pageImageUrl: string; studentName: string; attemptNumber: string; assignmentTitle: string;
   }>();
 
-  // ── Data state ─────────────────────────────────────────────────────────────
+  // ── Data ───────────────────────────────────────────────────────────────────
   const [savedAnnotations, setSavedAnnotations] = useState<AnnotationRow[]>([]);
   const [localAnnotations, setLocalAnnotations] = useState<LocalAnnotation[]>([]);
   const [categories, setCategories] = useState<MistakeCategoryRow[]>([]);
   const [attemptHistory, setAttemptHistory] = useState<AttemptRow[]>([]);
-  const [resolvedPageImageUrl, setResolvedPageImageUrl] = useState<string | null>(
-    pageImageUrl ?? null,
-  );
-  const [pageAspectRatio, setPageAspectRatio] = useState<number>(0.7);
-  const [canvasLayout, setCanvasLayout] = useState<{ width: number; height: number } | null>(null);
+  const [pageImageUrl, setPageImageUrl] = useState<string | null>(initialPageImageUrl ?? null);
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
   const [loadingAnnotations, setLoadingAnnotations] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // ── UI ─────────────────────────────────────────────────────────────────────
+  const [marking, setMarking] = useState(false);
+  const [detailsAnnotation, setDetailsAnnotation] = useState<AnnotationRow | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
-  // ── Annotation UX state ────────────────────────────────────────────────────
-  const [mode, setMode] = useState<Mode>('navigate');
-  const [activeTool, setActiveTool] = useState<Tool>('freehand');
-  const [detailsAnnotation, setDetailsAnnotation] = useState<AnnotationRow | null>(null);
+  // ── Review voice note ──────────────────────────────────────────────────────
+  const [reviewVoiceNote, setReviewVoiceNote] = useState<ReviewVoiceNoteRow | null>(null);
+  const [rvnOpen, setRvnOpen] = useState(false);
+  const [rvnState, setRvnState] = useState<RvnState>('idle');
+  const [rvnDurationMs, setRvnDurationMs] = useState(0);
+  const [rvnPlayUrl, setRvnPlayUrl] = useState<string | null>(null);
+  const rvnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rvnRecordingRef = useRef(false);
+  const rvnRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const rvnPlayer = useAudioPlayer(rvnPlayUrl ?? '');
+  const rvnPlayerStatus = useAudioPlayerStatus(rvnPlayer);
 
   // ── Load ───────────────────────────────────────────────────────────────────
   const loadAnnotations = useCallback(async () => {
@@ -108,9 +138,7 @@ export default function ReviewDetailScreen() {
         cursor = result.nextCursor;
       }
       setSavedAnnotations(all);
-    } catch {
-      // Non-fatal
-    } finally {
+    } catch { /* non-fatal */ } finally {
       setLoadingAnnotations(false);
     }
   }, [submissionId, attemptId]);
@@ -119,110 +147,93 @@ export default function ReviewDetailScreen() {
     loadAnnotations();
     getMistakeCategories().then(setCategories).catch(() => {});
     getAttemptHistory(submissionId).then(setAttemptHistory).catch(() => {});
+    getReviewVoiceNote(submissionId, attemptId).then(setReviewVoiceNote).catch(() => {});
     if (pageNumber) {
       getQuranPage(parseInt(pageNumber, 10))
-        .then((page) => {
-          if (page.imageUrl) setResolvedPageImageUrl(page.imageUrl);
-          if (page.width && page.height) setPageAspectRatio(page.width / page.height);
-        })
+        .then((page) => { if (page.imageUrl) setPageImageUrl(page.imageUrl); })
         .catch(() => {});
     }
-  }, [loadAnnotations, submissionId, pageNumber]);
+  }, [loadAnnotations, submissionId, attemptId, pageNumber]);
 
-  // ── Stroke complete → auto-save ────────────────────────────────────────────
-  const handleStrokeComplete = useCallback(
-    async (points: AnnotationPoint[]) => {
-      const localId = nextLocalId();
-      const strokeColor = TOOL_COLORS[activeTool] ?? TOOL_COLORS.freehand;
+  useEffect(() => {
+    return () => {
+      if (rvnTimerRef.current) clearInterval(rvnTimerRef.current);
+      if (rvnRecordingRef.current) rvnRecorder.stop().catch(() => {});
+    };
+  }, [rvnRecorder]);
 
-      // 1. Optimistically add the stroke as 'saving'
-      const local: LocalAnnotation = { localId, points, status: 'saving', strokeColor };
-      setLocalAnnotations((prev) => [...prev, local]);
+  useEffect(() => {
+    if (!rvnPlayUrl) return;
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: false,
+      shouldRouteThroughEarpiece: false,
+      interruptionMode: 'duckOthers',
+    }).then(() => rvnPlayer.play()).catch(() => {});
+  }, [rvnPlayUrl, rvnPlayer]);
 
-      try {
-        // 2. POST to backend
-        const saved = await createAnnotation(submissionId, attemptId, {
-          annotationType: 'freehand',
-          anchorType: 'page_region',
-          points,
-          style: { strokeColor, strokeWidth: 3 },
-        });
+  // ── Stroke → auto-save ────────────────────────────────────────────────────
+  const handleStrokeComplete = useCallback(async (points: AnnotationPoint[]) => {
+    const localId = nextLocalId();
+    const strokeColor = '#DC2626';
+    setLocalAnnotations((prev) => [...prev, { localId, points, status: 'saving', strokeColor }]);
+    try {
+      const saved = await createAnnotation(submissionId, attemptId, {
+        annotationType: 'freehand', anchorType: 'page_region',
+        points, style: { strokeColor, strokeWidth: 3 },
+      });
+      setLocalAnnotations((prev) => prev.filter((a) => a.localId !== localId));
+      setSavedAnnotations((prev) => [...prev, saved]);
+      setDetailsAnnotation(saved);
+    } catch {
+      setLocalAnnotations((prev) =>
+        prev.map((a) => (a.localId === localId ? { ...a, status: 'failed' } : a)),
+      );
+    }
+  }, [submissionId, attemptId]);
 
-        // 3. Move from local to saved
-        setLocalAnnotations((prev) => prev.filter((a) => a.localId !== localId));
-        setSavedAnnotations((prev) => [...prev, saved]);
-
-        // 4. Open details sheet so teacher can add label/note
-        setDetailsAnnotation(saved);
-      } catch {
-        // 5. Mark as failed so teacher can retry or delete
-        setLocalAnnotations((prev) =>
-          prev.map((a) => (a.localId === localId ? { ...a, status: 'failed' } : a)),
-        );
-      }
-    },
-    [submissionId, attemptId, activeTool],
-  );
-
-  // ── Annotation tap → open details ─────────────────────────────────────────
   const handleAnnotationTap = useCallback((ann: AnnotationRow) => {
     setDetailsAnnotation(ann);
   }, []);
 
-  // ── Retry failed local annotation ─────────────────────────────────────────
-  const handleRetryFailed = useCallback(
-    async (local: LocalAnnotation) => {
-      const strokeColor = local.strokeColor ?? TOOL_COLORS.freehand;
+  const handleRetryFailed = useCallback(async (local: LocalAnnotation) => {
+    const strokeColor = local.strokeColor ?? '#DC2626';
+    setLocalAnnotations((prev) =>
+      prev.map((a) => (a.localId === local.localId ? { ...a, status: 'saving' } : a)),
+    );
+    try {
+      const saved = await createAnnotation(submissionId, attemptId, {
+        annotationType: 'freehand', anchorType: 'page_region',
+        points: local.points, style: { strokeColor, strokeWidth: 3 },
+      });
+      setLocalAnnotations((prev) => prev.filter((a) => a.localId !== local.localId));
+      setSavedAnnotations((prev) => [...prev, saved]);
+      setDetailsAnnotation(saved);
+    } catch {
       setLocalAnnotations((prev) =>
-        prev.map((a) => (a.localId === local.localId ? { ...a, status: 'saving' } : a)),
+        prev.map((a) => (a.localId === local.localId ? { ...a, status: 'failed' } : a)),
       );
-      try {
-        const saved = await createAnnotation(submissionId, attemptId, {
-          annotationType: 'freehand',
-          anchorType: 'page_region',
-          points: local.points,
-          style: { strokeColor, strokeWidth: 3 },
-        });
-        setLocalAnnotations((prev) => prev.filter((a) => a.localId !== local.localId));
-        setSavedAnnotations((prev) => [...prev, saved]);
-        setDetailsAnnotation(saved);
-      } catch {
-        setLocalAnnotations((prev) =>
-          prev.map((a) => (a.localId === local.localId ? { ...a, status: 'failed' } : a)),
-        );
-        Alert.alert('Save Failed', 'Could not save this annotation. Check your connection.');
-      }
-    },
-    [submissionId, attemptId],
-  );
+      Alert.alert('Save Failed', 'Check your connection and try again.');
+    }
+  }, [submissionId, attemptId]);
 
-  // ── Delete failed local annotation ────────────────────────────────────────
   const handleDiscardFailed = useCallback((localId: string) => {
     setLocalAnnotations((prev) => prev.filter((a) => a.localId !== localId));
   }, []);
 
-  // ── Update annotation metadata ────────────────────────────────────────────
-  const handleUpdateMetadata = useCallback(
-    async (
-      annotationId: string,
-      input: { mistakeOptionId?: string; quickLabel?: string; noteText?: string },
-    ) => {
-      const updated = await updateAnnotation(annotationId, input);
-      setSavedAnnotations((prev) =>
-        prev.map((a) => (a.id === annotationId ? updated : a)),
-      );
-    },
-    [],
-  );
+  const handleUpdateMetadata = useCallback(async (
+    annotationId: string,
+    input: { mistakeOptionId?: string; quickLabel?: string; noteText?: string },
+  ) => {
+    const updated = await updateAnnotation(annotationId, input);
+    setSavedAnnotations((prev) => prev.map((a) => (a.id === annotationId ? updated : a)));
+  }, []);
 
-  // ── Delete saved annotation ────────────────────────────────────────────────
   const handleDeleteSaved = useCallback(async (annotationId: string) => {
-    // Optimistically remove
     setSavedAnnotations((prev) => prev.filter((a) => a.id !== annotationId));
     try {
       await deleteAnnotation(annotationId);
     } catch {
-      // Restore on failure
       loadAnnotations();
       throw new Error('Delete failed');
     }
@@ -232,15 +243,15 @@ export default function ReviewDetailScreen() {
   const hasPendingSaves = localAnnotations.some((a) => a.status === 'saving');
 
   const handleCompleteReview = (pageStatus: 'completed' | 'needs_resubmission') => {
+    setActionsOpen(false);
     if (hasPendingSaves) {
-      Alert.alert('Saving…', 'Please wait for annotations to finish saving.');
+      Alert.alert('Saving…', 'Please wait for corrections to finish saving.');
       return;
     }
     const label = pageStatus === 'completed' ? 'Mark as Complete' : 'Request Another Attempt';
-    const body =
-      pageStatus === 'completed'
-        ? 'Mark this recitation as complete? The student will be notified.'
-        : 'Ask the student to re-record? They will be notified to resubmit.';
+    const body = pageStatus === 'completed'
+      ? 'Mark this recitation as complete? The student will be notified.'
+      : 'Ask the student to re-record? They will be notified to resubmit.';
 
     Alert.alert(label, body, [
       { text: 'Cancel', style: 'cancel' },
@@ -267,218 +278,336 @@ export default function ReviewDetailScreen() {
     ]);
   };
 
-  const pageTitle = `Page ${pageNumber || '?'}${assignmentTitle ? ` — ${assignmentTitle}` : ''}`;
+  // ── Navigate to a different attempt ───────────────────────────────────────
+  const handleSwitchAttempt = (attempt: AttemptRow) => {
+    if (attempt.id === attemptId) return;
+    setActionsOpen(false);
+    router.replace({
+      pathname: '/(teacher)/review/[submissionId]',
+      params: {
+        submissionId,
+        attemptId: attempt.id,
+        pageNumber: pageNumber ?? '',
+        pageImageUrl: initialPageImageUrl ?? '',
+        studentName: studentName ?? '',
+        attemptNumber: String(attempt.attemptNumber),
+        assignmentTitle: assignmentTitle ?? '',
+      },
+    });
+  };
+
+  // ── Review voice note handlers ─────────────────────────────────────────────
+
+  const handleStartRvnRecording = async () => {
+    try {
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        Alert.alert('Microphone Required', 'Allow microphone access in Settings to record a voice note.');
+        return;
+      }
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+      await rvnRecorder.prepareToRecordAsync();
+      rvnRecorder.record();
+      rvnRecordingRef.current = true;
+      setRvnDurationMs(0);
+      setRvnState('recording');
+      rvnTimerRef.current = setInterval(() => setRvnDurationMs((p) => p + 1000), 1000);
+    } catch (e) {
+      Alert.alert('Recording Error', e instanceof Error ? e.message : 'Could not start recording');
+    }
+  };
+
+  const handleStopRvnRecording = async () => {
+    if (rvnTimerRef.current) { clearInterval(rvnTimerRef.current); rvnTimerRef.current = null; }
+    try {
+      await rvnRecorder.stop();
+      rvnRecordingRef.current = false;
+      const uri = rvnRecorder.uri;
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
+        interruptionMode: 'duckOthers',
+      });
+      if (uri) await uploadRvn(uri, rvnDurationMs);
+    } catch (e) {
+      setRvnState('idle');
+      Alert.alert('Recording Error', e instanceof Error ? e.message : 'Could not stop recording');
+    }
+  };
+
+  const uploadRvn = async (uri: string, durationMs: number) => {
+    if (!UploadModule) {
+      Alert.alert('Upload Error', 'File upload is not available in this environment.');
+      setRvnState('idle');
+      return;
+    }
+    setRvnState('uploading');
+    try {
+      const contentType = Platform.OS === 'ios' ? 'audio/m4a' : 'audio/mp4';
+      const { uploadUrl, storageKey } = await getReviewVoiceNoteUploadUrl(submissionId, attemptId, contentType);
+
+      const uploadResult = await UploadModule.uploadAsync(uploadUrl, uri, {
+        httpMethod: 'PUT',
+        uploadType: UploadModule.FileSystemUploadType.BINARY_CONTENT,
+        headers: { 'Content-Type': contentType },
+      });
+
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        throw new Error(`Upload failed: ${uploadResult.status}`);
+      }
+
+      let sizeBytes = 0;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const FileSystem = require('expo-file-system/legacy');
+        const info = await FileSystem.getInfoAsync(uri);
+        if (info.exists && 'size' in info) sizeBytes = (info as { size: number }).size;
+      } catch { /* best effort */ }
+
+      const saved = await saveReviewVoiceNote(submissionId, attemptId, {
+        audioStorageKey: storageKey,
+        durationMs,
+        contentType,
+        sizeBytes,
+      });
+
+      setReviewVoiceNote(saved);
+      setRvnPlayUrl(null);
+      setRvnState('done');
+    } catch (e) {
+      setRvnState('idle');
+      Alert.alert('Upload Failed', e instanceof Error ? e.message : 'Could not save review voice note.');
+    }
+  };
+
+  const handlePlayRvn = async () => {
+    if (rvnPlayerStatus.playing) { rvnPlayer.pause(); return; }
+    try {
+      if (!rvnPlayUrl && reviewVoiceNote) {
+        const { url } = await getReviewVoiceNoteReadUrl(reviewVoiceNote.audioStorageKey);
+        setRvnPlayUrl(url);
+        return; // useEffect fires and calls play
+      }
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: false,
+        shouldRouteThroughEarpiece: false,
+        interruptionMode: 'duckOthers',
+      });
+      rvnPlayer.play();
+    } catch {
+      Alert.alert('Playback Error', 'Could not load review voice note.');
+    }
+  };
+
+  const handleDeleteRvn = () => {
+    Alert.alert(
+      'Remove Voice Note',
+      'Remove the overall voice note for this review?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteReviewVoiceNote(submissionId, attemptId);
+              setReviewVoiceNote(null);
+              setRvnState('idle');
+              setRvnPlayUrl(null);
+            } catch {
+              Alert.alert('Error', 'Could not remove voice note.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const failedAnnotations = localAnnotations.filter((a) => a.status === 'failed');
+  const savingCount = localAnnotations.filter((a) => a.status === 'saving').length;
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <>
-      <Stack.Screen options={{ title: studentName || 'Review' }} />
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        scrollEnabled={mode === 'navigate'}
-      >
-        {/* Meta row */}
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>{pageTitle}</Text>
-          <Text style={styles.metaText}>Attempt {attemptNumber || '1'}</Text>
-        </View>
-
-        {/* Audio player */}
-        <AudioPlayerBar submissionId={submissionId} attemptId={attemptId} />
-
-        {/* Page image + annotation canvas */}
-        <View
-          style={[styles.canvasWrapper, { aspectRatio: pageAspectRatio }]}
-          onLayout={(e) =>
-            setCanvasLayout({
-              width: e.nativeEvent.layout.width,
-              height: e.nativeEvent.layout.height,
-            })
-          }
-        >
-          {resolvedPageImageUrl ? (
-            <Image
-              source={{ uri: resolvedPageImageUrl }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="contain"
-            />
-          ) : (
-            <View style={styles.pagePlaceholder}>
-              <Text style={styles.placeholderText}>Quran page image unavailable</Text>
-            </View>
-          )}
-
-          {loadingAnnotations ? (
-            <View style={styles.canvasLoading}>
-              <ActivityIndicator color="#1B4F72" />
-            </View>
-          ) : (
-            canvasLayout && (
-              <AnnotationCanvas
-                width={canvasLayout.width}
-                height={canvasLayout.height}
-                savedAnnotations={savedAnnotations}
-                localAnnotations={localAnnotations}
-                mode={mode}
-                strokeColor={TOOL_COLORS[activeTool]}
-                onStrokeComplete={handleStrokeComplete}
-                onAnnotationTap={handleAnnotationTap}
-              />
-            )
-          )}
-        </View>
-
-        {/* Failed annotation banners */}
-        {failedAnnotations.map((local) => (
-          <View key={local.localId} style={styles.failedBanner}>
-            <Text style={styles.failedText}>⚠ Annotation failed to save</Text>
-            <View style={styles.failedActions}>
-              <TouchableOpacity
-                style={styles.retryBtn}
-                onPress={() => handleRetryFailed(local)}
-              >
-                <Text style={styles.retryBtnText}>Retry</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.discardBtn}
-                onPress={() => handleDiscardFailed(local.localId)}
-              >
-                <Text style={styles.discardBtnText}>Discard</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-
-        {/* Mode + tool bar */}
-        <View style={styles.modeBar}>
-          {/* Navigate / Annotate toggle */}
-          <TouchableOpacity
-            style={[styles.modeBtn, mode === 'navigate' && styles.modeBtnActive]}
-            onPress={() => setMode('navigate')}
-          >
-            <Text style={[styles.modeBtnText, mode === 'navigate' && styles.modeBtnTextActive]}>
-              Navigate
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeBtn, mode === 'annotate' && styles.modeBtnActive]}
-            onPress={() => setMode('annotate')}
-          >
-            <Text style={[styles.modeBtnText, mode === 'annotate' && styles.modeBtnTextActive]}>
-              Annotate
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tool picker — only visible in annotate mode */}
-        {mode === 'annotate' && (
-          <View style={styles.toolBar}>
-            {TOOLS.map((tool) => (
-              <TouchableOpacity
-                key={tool.key}
-                style={[
-                  styles.toolBtn,
-                  activeTool === tool.key && { backgroundColor: TOOL_COLORS[tool.key] },
-                ]}
-                onPress={() => setActiveTool(tool.key)}
-              >
-                <View
-                  style={[
-                    styles.toolColorDot,
-                    { backgroundColor: TOOL_COLORS[tool.key] },
-                    activeTool === tool.key && styles.toolColorDotActive,
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.toolBtnText,
-                    activeTool === tool.key && styles.toolBtnTextActive,
-                  ]}
-                >
-                  {tool.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Annotation count */}
-        {!loadingAnnotations && (
-          <Text style={styles.annotationCount}>
-            {savedAnnotations.length === 0
-              ? 'No annotations yet'
-              : `${savedAnnotations.length} annotation${savedAnnotations.length !== 1 ? 's' : ''}`}
-            {localAnnotations.filter((a) => a.status === 'saving').length > 0
-              ? ' · saving…'
-              : ''}
+      {/* ── Top bar ── */}
+      <View style={styles.topBar}>
+        <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()}>
+          <Text style={styles.topBarBack}>‹</Text>
+        </TouchableOpacity>
+        <View style={styles.topBarCenter}>
+          <Text style={styles.topBarTitle} numberOfLines={1}>
+            {studentName || 'Review'}
           </Text>
+          <Text style={styles.topBarSub}>
+            Page {pageNumber ?? '?'} · Attempt {attemptNumber ?? '1'}
+          </Text>
+        </View>
+        <View style={{ width: 44 }} />
+      </View>
+
+      {/* ── Canvas area (sits between top bar and toolbar) ── */}
+      <View
+        style={styles.canvasArea}
+        onLayout={(e) => setCanvasSize({
+          width: e.nativeEvent.layout.width,
+          height: e.nativeEvent.layout.height,
+        })}
+      >
+        {!pageImageUrl && (
+          <View style={styles.pagePlaceholder}>
+            <Text style={styles.pagePlaceholderText}>Page unavailable</Text>
+          </View>
         )}
 
-        {/* Review actions */}
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.completeBtn, submitting && styles.disabledBtn]}
-            onPress={() => handleCompleteReview('completed')}
-            disabled={submitting}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.actionBtnText}>Mark as Complete</Text>
-            )}
+        {loadingAnnotations && (
+          <View style={styles.canvasLoading}>
+            <ActivityIndicator color="#1B4F72" />
+          </View>
+        )}
+
+        {canvasSize && (
+          <AnnotationCanvas
+            width={canvasSize.width}
+            height={canvasSize.height}
+            imageUrl={pageImageUrl ?? undefined}
+            savedAnnotations={savedAnnotations}
+            localAnnotations={localAnnotations}
+            drawEnabled={marking}
+            onStrokeComplete={handleStrokeComplete}
+            onAnnotationTap={handleAnnotationTap}
+          />
+        )}
+      </View>
+
+      {/* ── Failed save banners ── */}
+      {failedAnnotations.map((local) => (
+        <View key={local.localId} style={styles.failedBanner}>
+          <Text style={styles.failedText}>⚠ Failed to save correction</Text>
+          <TouchableOpacity style={styles.failedBtn} onPress={() => handleRetryFailed(local)}>
+            <Text style={styles.failedBtnText}>Retry</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.resubmitBtn, submitting && styles.disabledBtn]}
-            onPress={() => handleCompleteReview('needs_resubmission')}
-            disabled={submitting}
-          >
-            <Text style={[styles.actionBtnText, styles.resubmitBtnText]}>
-              Request Another Attempt
-            </Text>
+          <TouchableOpacity style={styles.failedBtnOutline} onPress={() => handleDiscardFailed(local.localId)}>
+            <Text style={styles.failedBtnOutlineText}>Discard</Text>
           </TouchableOpacity>
         </View>
+      ))}
 
-        {/* Attempt history */}
-        {attemptHistory.length > 0 && (
-          <View style={styles.historySection}>
-            <TouchableOpacity
-              style={styles.historyHeader}
-              onPress={() => setShowHistory((v) => !v)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.historyHeaderText}>
-                Attempt History ({attemptHistory.length})
+      {/* ── Bottom bar ── */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+        {/* Mini audio player */}
+        <AudioPlayerBar submissionId={submissionId} attemptId={attemptId} compact />
+
+        {/* Mark as Complete — primary action */}
+        <TouchableOpacity
+          style={[styles.completeBtn, submitting && styles.disabledBtn]}
+          onPress={() => handleCompleteReview('completed')}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.completeBtnText}>✓ Complete</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Review voice note button */}
+        <TouchableOpacity
+          style={[styles.rvnBtn, reviewVoiceNote && styles.rvnBtnOn]}
+          onPress={() => setRvnOpen(true)}
+          accessibilityLabel="Review voice note"
+        >
+          <Text style={styles.rvnBtnText}>🎙</Text>
+        </TouchableOpacity>
+
+        {/* Mark (draw corrections) toggle */}
+        <TouchableOpacity
+          style={[styles.markBtn, marking && styles.markBtnOn]}
+          onPress={() => setMarking((v) => !v)}
+        >
+          <Text style={[styles.markBtnText, marking && styles.markBtnTextOn]}>
+            {marking ? '✏️ Marking' : '✏️ Mark'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* More actions */}
+        <TouchableOpacity style={styles.menuBtn} onPress={() => setActionsOpen(true)}>
+          <Text style={styles.menuBtnText}>···</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Actions sheet ── */}
+      <Modal
+        visible={actionsOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setActionsOpen(false)}
+      >
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setActionsOpen(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetMetaRow}>
+              <Text style={styles.sheetMeta}>
+                {savedAnnotations.length} correction{savedAnnotations.length !== 1 ? 's' : ''}
+                {savingCount > 0 ? ` · ${savingCount} saving…` : ''}
               </Text>
-              <Text style={styles.historyChevron}>{showHistory ? '▲' : '▼'}</Text>
+            </View>
+
+            <View style={styles.sheetDivider} />
+
+            <TouchableOpacity
+              style={styles.sheetAction}
+              onPress={() => handleCompleteReview('needs_resubmission')}
+              disabled={submitting}
+            >
+              <Text style={styles.sheetActionIcon}>↩</Text>
+              <Text style={styles.sheetActionTextDestructive}>Request Another Attempt</Text>
             </TouchableOpacity>
-            {showHistory && (
-              <View style={styles.historyList}>
-                {attemptHistory.map((a) => {
+
+            {attemptHistory.length > 0 && (
+              <>
+                <View style={styles.sheetDivider} />
+                <TouchableOpacity
+                  style={styles.sheetAction}
+                  onPress={() => setShowHistory((v) => !v)}
+                >
+                  <Text style={styles.sheetActionIcon}>📋</Text>
+                  <Text style={styles.sheetActionText}>
+                    Attempt History ({attemptHistory.length})
+                  </Text>
+                  <Text style={styles.sheetChevron}>{showHistory ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+
+                {showHistory && attemptHistory.map((a) => {
                   const isCurrent = a.id === attemptId;
                   return (
-                    <View
+                    <TouchableOpacity
                       key={a.id}
                       style={[styles.historyRow, isCurrent && styles.historyRowCurrent]}
+                      onPress={() => handleSwitchAttempt(a)}
+                      disabled={isCurrent}
                     >
-                      <Text style={[styles.historyAttemptNum, isCurrent && styles.historyCurrentText]}>
+                      <Text style={[styles.historyNum, isCurrent && styles.historyNumCurrent]}>
                         Attempt {a.attemptNumber}{isCurrent ? ' · current' : ''}
                       </Text>
                       <Text style={styles.historyStatus}>
                         {ATTEMPT_STATUS_LABELS[a.status] ?? a.status}
                       </Text>
                       <Text style={styles.historyDate}>{relativeDate(a.submittedAt)}</Text>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
-              </View>
+              </>
             )}
-          </View>
-        )}
-      </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
-      {/* Annotation details bottom sheet */}
+      {/* ── Annotation details sheet ── */}
       <AnnotationDetailsSheet
         visible={detailsAnnotation !== null}
         annotation={detailsAnnotation}
@@ -487,148 +616,231 @@ export default function ReviewDetailScreen() {
         onDelete={handleDeleteSaved}
         onClose={() => setDetailsAnnotation(null)}
       />
-    </>
+
+      {/* ── Review voice note modal ── */}
+      <Modal
+        visible={rvnOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRvnOpen(false)}
+      >
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setRvnOpen(false)}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.sheet, styles.rvnSheet, { paddingBottom: insets.bottom + 16 }]}
+          >
+            <View style={styles.sheetHandle} />
+            <Text style={styles.rvnTitle}>Review Voice Note</Text>
+            <Text style={styles.rvnHint}>
+              Leave an overall message for the student about this recitation
+            </Text>
+
+            <View style={styles.rvnControls}>
+              {/* Has voice note and not actively recording/uploading */}
+              {(reviewVoiceNote !== null || rvnState === 'done') &&
+               rvnState !== 'recording' &&
+               rvnState !== 'uploading' ? (
+                <>
+                  <TouchableOpacity style={styles.rvnPlayBtn} onPress={handlePlayRvn}>
+                    <Text style={styles.rvnPlayBtnText}>
+                      {rvnPlayerStatus.playing ? '⏸  Playing…' : '▶  Play Message'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.rvnReRecordBtn} onPress={handleStartRvnRecording}>
+                    <Text style={styles.rvnReRecordBtnText}>🎙  Re-record</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.rvnDeleteBtn} onPress={handleDeleteRvn}>
+                    <Text style={styles.rvnDeleteBtnText}>Remove Voice Note</Text>
+                  </TouchableOpacity>
+                </>
+              ) : rvnState === 'recording' ? (
+                <View style={styles.rvnRecordingRow}>
+                  <View style={styles.rvnRecordingIndicator}>
+                    <View style={styles.rvnRecDot} />
+                    <Text style={styles.rvnRecTimer}>{formatRvnDuration(rvnDurationMs)}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.rvnStopBtn} onPress={handleStopRvnRecording}>
+                    <Text style={styles.rvnStopBtnText}>■  Stop</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : rvnState === 'uploading' ? (
+                <View style={styles.rvnUploadingRow}>
+                  <ActivityIndicator size="small" color="#1B4F72" />
+                  <Text style={styles.rvnUploadingText}>Saving voice note…</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.rvnRecordBtn} onPress={handleStartRvnRecording}>
+                  <Text style={styles.rvnRecordBtnText}>🎙  Record Voice Note</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.rvnDoneBtn}
+              onPress={() => setRvnOpen(false)}
+            >
+              <Text style={styles.rvnDoneBtnText}>Done</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: '#F8F9FA' },
-  content: { padding: 16, gap: 12, paddingBottom: 40 },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  metaText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
-  canvasWrapper: {
-    alignSelf: 'stretch',
+  root: { flex: 1, backgroundColor: '#fff' },
+
+  // Top bar
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 52,
+    paddingHorizontal: 4,
     backgroundColor: '#fff',
-    borderRadius: 8,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
   },
-  pagePlaceholder: {
+  topBarBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  topBarBack: { fontSize: 28, color: '#1B4F72', lineHeight: 32 },
+  topBarCenter: { flex: 1, alignItems: 'center' },
+  topBarTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  topBarSub: { fontSize: 12, color: '#6B7280', marginTop: 1 },
+
+  // Canvas area
+  canvasArea: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F8F9FA',
+    overflow: 'hidden',
   },
-  placeholderText: { fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
+  pagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  pagePlaceholderText: { fontSize: 13, color: '#9CA3AF' },
   canvasLoading: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
   },
+
   // Failed banners
   failedBanner: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    padding: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF2F2', paddingHorizontal: 12, paddingVertical: 8,
+    borderTopWidth: 1, borderTopColor: '#FECACA',
+  },
+  failedText: { flex: 1, fontSize: 13, color: '#DC2626', fontWeight: '500' },
+  failedBtn: { backgroundColor: '#DC2626', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  failedBtnText: { fontSize: 12, color: '#fff', fontWeight: '700' },
+  failedBtnOutline: { borderWidth: 1, borderColor: '#DC2626', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  failedBtnOutlineText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
+
+  // Bottom bar
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 10,
     gap: 8,
+    backgroundColor: '#fff',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E7EB',
   },
-  failedText: { fontSize: 13, color: '#DC2626', fontWeight: '500' },
-  failedActions: { flexDirection: 'row', gap: 8 },
-  retryBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#DC2626',
-  },
-  retryBtnText: { fontSize: 13, color: '#fff', fontWeight: '600' },
-  discardBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#DC2626',
-  },
-  discardBtnText: { fontSize: 13, color: '#DC2626', fontWeight: '600' },
-  // Mode bar
-  modeBar: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
+  completeBtn: {
+    flex: 1,
+    backgroundColor: '#1B4F72',
     borderRadius: 10,
-    padding: 3,
-    gap: 3,
-  },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  modeBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  modeBtnText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
-  modeBtnTextActive: { color: '#1B4F72' },
-  // Tool bar
-  toolBar: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  toolBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 9,
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  toolColorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  toolColorDotActive: {
-    backgroundColor: '#fff',
-  },
-  toolBtnText: { fontSize: 12, color: '#374151', fontWeight: '600' },
-  toolBtnTextActive: { color: '#fff' },
-  annotationCount: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
-  // Review actions
-  actions: { gap: 10 },
-  actionBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  completeBtn: { backgroundColor: '#1B4F72' },
-  resubmitBtn: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#1B4F72' },
-  disabledBtn: { opacity: 0.5 },
-  actionBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  resubmitBtnText: { color: '#1B4F72' },
-  // Attempt history
-  historySection: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-  },
-  historyHeaderText: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  historyChevron: { fontSize: 12, color: '#9CA3AF' },
-  historyList: { borderTopWidth: 1, borderTopColor: '#E5E7EB' },
-  historyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
     paddingVertical: 10,
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  disabledBtn: { opacity: 0.5 },
+  completeBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  markBtn: {
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 10, borderWidth: 1.5, borderColor: '#D1D5DB',
+  },
+  markBtnOn: { backgroundColor: '#1B4F72', borderColor: '#1B4F72' },
+  markBtnText: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  markBtnTextOn: { color: '#fff' },
+  menuBtn: {
+    width: 38, height: 38, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 10, backgroundColor: '#F3F4F6',
+  },
+  menuBtnText: { fontSize: 18, color: '#374151', letterSpacing: 1 },
+
+  // Review voice note button in bottom bar
+  rvnBtn: {
+    width: 38, height: 38, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 10, borderWidth: 1.5, borderColor: '#D1D5DB', backgroundColor: '#F9FAFB',
+  },
+  rvnBtnOn: { backgroundColor: '#1B4F72', borderColor: '#1B4F72' },
+  rvnBtnText: { fontSize: 17 },
+
+  // Review voice note modal
+  rvnSheet: { paddingHorizontal: 20, paddingTop: 8 },
+  rvnTitle: { fontSize: 17, fontWeight: '700', color: '#111827', marginTop: 10, marginBottom: 4 },
+  rvnHint: { fontSize: 13, color: '#9CA3AF', marginBottom: 20, lineHeight: 18 },
+  rvnControls: { gap: 10, marginBottom: 16 },
+  rvnRecordBtn: {
+    backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1,
+    borderColor: '#86EFAC', paddingVertical: 14, alignItems: 'center',
+  },
+  rvnRecordBtnText: { fontSize: 15, fontWeight: '600', color: '#15803D' },
+  rvnRecordingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rvnRecordingIndicator: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FEF2F2', borderRadius: 12, borderWidth: 1,
+    borderColor: '#FECACA', padding: 14,
+  },
+  rvnRecDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#DC2626' },
+  rvnRecTimer: { fontSize: 14, fontWeight: '700', color: '#DC2626' },
+  rvnStopBtn: {
+    paddingVertical: 14, paddingHorizontal: 20,
+    borderRadius: 12, backgroundColor: '#DC2626', alignItems: 'center',
+  },
+  rvnStopBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  rvnUploadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
+  rvnUploadingText: { fontSize: 14, color: '#1B4F72' },
+  rvnPlayBtn: {
+    backgroundColor: '#EFF6FF', borderRadius: 12, borderWidth: 1,
+    borderColor: '#BFDBFE', paddingVertical: 14, alignItems: 'center',
+  },
+  rvnPlayBtnText: { fontSize: 14, fontWeight: '600', color: '#1D4ED8' },
+  rvnReRecordBtn: {
+    backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1,
+    borderColor: '#86EFAC', paddingVertical: 12, alignItems: 'center',
+  },
+  rvnReRecordBtnText: { fontSize: 13, fontWeight: '600', color: '#15803D' },
+  rvnDeleteBtn: { paddingVertical: 10, alignItems: 'center' },
+  rvnDeleteBtnText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
+  rvnDoneBtn: {
+    paddingVertical: 14, alignItems: 'center',
+    borderRadius: 12, backgroundColor: '#1B4F72',
+  },
+  rvnDoneBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  // Actions sheet
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 12 },
+  sheetMetaRow: { paddingHorizontal: 20, paddingBottom: 10 },
+  sheetMeta: { fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
+  sheetDivider: { height: StyleSheet.hairlineWidth, backgroundColor: '#E5E7EB', marginHorizontal: 20, marginVertical: 4 },
+  sheetAction: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 20, paddingVertical: 14,
+  },
+  sheetActionIcon: { fontSize: 18, width: 28 },
+  sheetActionText: { fontSize: 16, color: '#111827', fontWeight: '500', flex: 1 },
+  sheetActionTextDestructive: { fontSize: 16, color: '#DC2626', fontWeight: '500', flex: 1 },
+  sheetChevron: { fontSize: 12, color: '#9CA3AF' },
+
+  // History rows
+  historyRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 60, paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#F3F4F6', gap: 8,
   },
   historyRowCurrent: { backgroundColor: '#EFF6FF' },
-  historyAttemptNum: { fontSize: 13, color: '#374151', fontWeight: '500', flex: 1 },
-  historyCurrentText: { color: '#1D4ED8', fontWeight: '700' },
+  historyNum: { fontSize: 13, color: '#374151', fontWeight: '500', flex: 1 },
+  historyNumCurrent: { color: '#1D4ED8', fontWeight: '700' },
   historyStatus: { fontSize: 12, color: '#6B7280' },
   historyDate: { fontSize: 12, color: '#9CA3AF', minWidth: 60, textAlign: 'right' },
 });

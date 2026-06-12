@@ -147,6 +147,7 @@ export interface AnnotationRow {
   quickLabel: string | null;
   noteText: string | null;
   recordingTimestampMs: number | null;
+  hasVoiceNote?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,6 +223,21 @@ export interface AdminRelationshipRow {
   studentName: string;
   status: 'active' | 'inactive' | 'pending';
   createdAt: string;
+}
+
+// ── Review voice notes ───────────────────────────────────────────────────────
+
+export interface ReviewVoiceNoteRow {
+  id: string;
+  submissionAttemptId: string;
+  teacherId: string;
+  audioStorageKey: string;
+  durationMs: number | null;
+  contentType: string | null;
+  sizeBytes: number | null;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ── Quran pages ──────────────────────────────────────────────────────────────

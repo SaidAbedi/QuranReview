@@ -1,11 +1,18 @@
 import { api, normalizeUrl } from './client';
 import type {
   AttemptRow,
+  ReviewVoiceNoteRow,
   TeacherQueueItem,
   CompleteReviewResult,
   SignedReadUrlResult,
   MistakeCategoryRow,
 } from '@/types/api';
+
+export interface ReviewVoiceNoteUploadUrlResult {
+  uploadUrl: string;
+  storageKey: string;
+  expiresAt: string;
+}
 
 const normalizeQueueItem = (item: TeacherQueueItem): TeacherQueueItem => ({
   ...item,
@@ -40,3 +47,46 @@ export const getMistakeCategories = (): Promise<MistakeCategoryRow[]> =>
 
 export const getAttemptHistory = (submissionId: string): Promise<AttemptRow[]> =>
   api.get<AttemptRow[]>(`/submissions/${submissionId}/attempts`);
+
+export const getReviewVoiceNote = (
+  submissionId: string,
+  attemptId: string,
+): Promise<ReviewVoiceNoteRow | null> =>
+  api.get<ReviewVoiceNoteRow | null>(
+    `/submissions/${submissionId}/attempts/${attemptId}/review-voice-note`,
+  );
+
+export const getReviewVoiceNoteUploadUrl = (
+  submissionId: string,
+  attemptId: string,
+  contentType: string,
+): Promise<ReviewVoiceNoteUploadUrlResult> =>
+  api.post<ReviewVoiceNoteUploadUrlResult>('/media/review-voice-note-upload-url', {
+    submissionId,
+    attemptId,
+    contentType,
+  });
+
+export const saveReviewVoiceNote = (
+  submissionId: string,
+  attemptId: string,
+  input: { audioStorageKey: string; durationMs: number; contentType: string; sizeBytes: number },
+): Promise<ReviewVoiceNoteRow> =>
+  api.post<ReviewVoiceNoteRow>(
+    `/submissions/${submissionId}/attempts/${attemptId}/review-voice-note`,
+    input,
+  );
+
+export const deleteReviewVoiceNote = (
+  submissionId: string,
+  attemptId: string,
+): Promise<{ success: boolean }> =>
+  api.delete<{ success: boolean }>(
+    `/submissions/${submissionId}/attempts/${attemptId}/review-voice-note`,
+  );
+
+export const getReviewVoiceNoteReadUrl = (storageKey: string): Promise<SignedReadUrlResult> =>
+  api.post<SignedReadUrlResult>('/media/signed-read-url', {
+    mediaType: 'review_voice_note',
+    storageKey,
+  });

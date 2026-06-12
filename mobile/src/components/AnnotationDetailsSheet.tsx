@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,7 +11,27 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import {
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  RecordingPresets,
+} from 'expo-audio';
+import { addVoiceNote, getVoiceNoteReadUrl, getVoiceNoteUploadUrl } from '@/api/annotations';
 import type { AnnotationRow, MistakeCategoryRow, MistakeOptionRow } from '@/types/api';
+
+let UploadModule: {
+  uploadAsync: typeof import('expo-file-system/legacy').uploadAsync;
+  FileSystemUploadType: typeof import('expo-file-system/legacy').FileSystemUploadType;
+} | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  UploadModule = require('expo-file-system/legacy');
+} catch {
+  // Not available in this runtime.
+}
 
 interface Props {
   visible: boolean;
@@ -22,6 +43,14 @@ interface Props {
   ) => Promise<void>;
   onDelete: (annotationId: string) => Promise<void>;
   onClose: () => void;
+}
+
+type VoiceNoteState = 'idle' | 'recording' | 'uploading' | 'done' | 'playing';
+
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
 export default function AnnotationDetailsSheet({
@@ -40,10 +69,28 @@ export default function AnnotationDetailsSheet({
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [optionOpen, setOptionOpen] = useState(false);
 
+  // Voice note state
+  const [voiceState, setVoiceState] = useState<VoiceNoteState>('idle');
+  const [recordDurationMs, setRecordDurationMs] = useState(0);
+  const [voiceNoteUri, setVoiceNoteUri] = useState<string | null>(null);
+  const [hasVoiceNote, setHasVoiceNote] = useState(false);
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isRecordingRef = useRef(false);
+
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const player = useAudioPlayer(playbackUrl ?? '');
+  const playerStatus = useAudioPlayerStatus(player);
+
   // Populate fields when annotation changes
   useEffect(() => {
     if (!annotation) return;
     setNoteText(annotation.noteText ?? '');
+    setHasVoiceNote(annotation.hasVoiceNote ?? false);
+    setVoiceNoteUri(null);
+    setPlaybackUrl(null);
+    setVoiceState('idle');
+    setRecordDurationMs(0);
 
     if (annotation.mistakeOptionId) {
       for (const cat of categories) {
@@ -58,6 +105,16 @@ export default function AnnotationDetailsSheet({
     setSelectedCategory(null);
     setSelectedOption(null);
   }, [annotation, categories]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (isRecordingRef.current) {
+        recorder.stop().catch(() => {});
+      }
+    };
+  }, [recorder]);
 
   const filteredOptions = selectedCategory?.options ?? [];
 
@@ -104,7 +161,140 @@ export default function AnnotationDetailsSheet({
     );
   };
 
+  // ── Voice note recording ───────────────────────────────────────────────────
+
+  const handleStartRecording = async () => {
+    try {
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        Alert.alert('Microphone Required', 'Allow microphone access in Settings to record voice notes.');
+        return;
+      }
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      isRecordingRef.current = true;
+      setRecordDurationMs(0);
+      setVoiceState('recording');
+      timerRef.current = setInterval(() => setRecordDurationMs((p) => p + 1000), 1000);
+    } catch (e) {
+      Alert.alert('Recording Error', e instanceof Error ? e.message : 'Could not start recording');
+    }
+  };
+
+  const handleStopRecording = async () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    try {
+      await recorder.stop();
+      isRecordingRef.current = false;
+      const uri = recorder.uri;
+      setVoiceNoteUri(uri);
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
+        interruptionMode: 'duckOthers',
+      });
+      // Auto-upload
+      if (uri && annotation) {
+        await uploadVoiceNote(uri, annotation.id, annotation.submissionId, annotation.submissionAttemptId, recordDurationMs);
+      }
+    } catch (e) {
+      setVoiceState('idle');
+      Alert.alert('Recording Error', e instanceof Error ? e.message : 'Could not stop recording');
+    }
+  };
+
+  const uploadVoiceNote = async (
+    uri: string,
+    annotationId: string,
+    submissionId: string,
+    attemptId: string,
+    durationMs: number,
+  ) => {
+    if (!UploadModule) {
+      Alert.alert('Upload Error', 'File upload is not available in this environment.');
+      setVoiceState('idle');
+      return;
+    }
+    setVoiceState('uploading');
+    try {
+      const contentType = Platform.OS === 'ios' ? 'audio/m4a' : 'audio/mp4';
+      const { uploadUrl, storageKey } = await getVoiceNoteUploadUrl(submissionId, attemptId, annotationId, contentType);
+
+      const uploadResult = await UploadModule.uploadAsync(uploadUrl, uri, {
+        httpMethod: 'PUT',
+        uploadType: UploadModule.FileSystemUploadType.BINARY_CONTENT,
+        headers: { 'Content-Type': contentType },
+      });
+
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        throw new Error(`Upload failed: ${uploadResult.status}`);
+      }
+
+      // Get file size from uri info
+      let sizeBytes = 0;
+      try {
+        const FileSystem = require('expo-file-system/legacy');
+        const info = await FileSystem.getInfoAsync(uri);
+        if (info.exists && 'size' in info) sizeBytes = (info as { size: number }).size;
+      } catch { /* best effort */ }
+
+      await addVoiceNote(annotationId, {
+        audioStorageKey: storageKey,
+        durationMs,
+        contentType,
+        sizeBytes,
+      });
+
+      setHasVoiceNote(true);
+      setVoiceState('done');
+    } catch (e) {
+      setVoiceState('idle');
+      Alert.alert('Upload Failed', e instanceof Error ? e.message : 'Could not save voice note.');
+    }
+  };
+
+  const handlePlayVoiceNote = async () => {
+    if (!annotation) return;
+    try {
+      if (!playbackUrl) {
+        // Build storage key from known path convention
+        const storageKey = `teacher-voice-notes/${annotation.teacherId}/${annotation.submissionId}/${annotation.submissionAttemptId}/${annotation.id}.m4a`;
+        const { url } = await getVoiceNoteReadUrl(storageKey);
+        setPlaybackUrl(url);
+      }
+      setVoiceState('playing');
+      player.play();
+    } catch {
+      Alert.alert('Playback Error', 'Could not load voice note for playback.');
+    }
+  };
+
+  const handleDeleteVoiceNote = () => {
+    Alert.alert(
+      'Delete Voice Note',
+      'Remove this voice note?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setHasVoiceNote(false);
+            setVoiceNoteUri(null);
+            setPlaybackUrl(null);
+            setVoiceState('idle');
+          },
+        },
+      ],
+    );
+  };
+
   if (!annotation) return null;
+
+  const isRecording = voiceState === 'recording';
+  const isUploading = voiceState === 'uploading';
 
   return (
     <Modal
@@ -168,6 +358,46 @@ export default function AnnotationDetailsSheet({
               numberOfLines={3}
               textAlignVertical="top"
             />
+
+            {/* Voice note */}
+            <Text style={[styles.label, styles.labelSpaced]}>Voice Note</Text>
+            <View style={styles.voiceRow}>
+              {hasVoiceNote || voiceState === 'done' ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.voicePlayBtn}
+                    onPress={handlePlayVoiceNote}
+                    disabled={isUploading}
+                  >
+                    <Text style={styles.voicePlayBtnText}>
+                      {voiceState === 'playing' && playerStatus.playing ? '⏸ Playing…' : '▶ Play'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.voiceDeleteBtn} onPress={handleDeleteVoiceNote}>
+                    <Text style={styles.voiceDeleteBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </>
+              ) : isRecording ? (
+                <>
+                  <View style={styles.voiceRecordingIndicator}>
+                    <View style={styles.voiceRecDot} />
+                    <Text style={styles.voiceRecTimer}>{formatDuration(recordDurationMs)}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.voiceStopBtn} onPress={handleStopRecording}>
+                    <Text style={styles.voiceStopBtnText}>Stop</Text>
+                  </TouchableOpacity>
+                </>
+              ) : isUploading ? (
+                <View style={styles.voiceUploadingRow}>
+                  <ActivityIndicator size="small" color="#1B4F72" />
+                  <Text style={styles.voiceUploadingText}>Saving voice note…</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.voiceRecordBtn} onPress={handleStartRecording}>
+                  <Text style={styles.voiceRecordBtnText}>🎙 Record Voice Note</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </ScrollView>
 
           {/* Footer actions */}
@@ -229,7 +459,6 @@ export default function AnnotationDetailsSheet({
                   ]}
                   onPress={() => {
                     setSelectedCategory(cat);
-                    // Clear option if it doesn't belong to new category
                     if (selectedOption && !cat.options.find((o) => o.id === selectedOption.id)) {
                       setSelectedOption(null);
                     }
@@ -308,8 +537,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '75%',
-    paddingBottom: 34, // safe area
+    maxHeight: '80%',
+    paddingBottom: 34,
   },
   header: {
     flexDirection: 'row',
@@ -349,6 +578,75 @@ const styles = StyleSheet.create({
     color: '#111827',
     minHeight: 80,
   },
+  // Voice note
+  voiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+  },
+  voiceRecordBtn: {
+    flex: 1,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  voiceRecordBtnText: { fontSize: 14, fontWeight: '600', color: '#15803D' },
+  voiceRecordingIndicator: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  voiceRecDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#DC2626',
+  },
+  voiceRecTimer: { fontSize: 14, fontWeight: '700', color: '#DC2626' },
+  voiceStopBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: '#DC2626',
+  },
+  voiceStopBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  voiceUploadingRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 11,
+  },
+  voiceUploadingText: { fontSize: 14, color: '#1B4F72' },
+  voicePlayBtn: {
+    flex: 1,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  voicePlayBtnText: { fontSize: 14, fontWeight: '600', color: '#1D4ED8' },
+  voiceDeleteBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DC2626',
+  },
+  voiceDeleteBtnText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
   footer: {
     flexDirection: 'row',
     gap: 10,

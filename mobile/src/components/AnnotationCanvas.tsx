@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, Image, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Path, Circle } from 'react-native-svg';
 import type { AnnotationPoint, AnnotationRow } from '@/types/api';
@@ -40,11 +40,16 @@ interface Props {
   height: number;
   savedAnnotations: AnnotationRow[];
   localAnnotations: LocalAnnotation[];
-  mode: 'navigate' | 'annotate';
+  // drawEnabled=true  → drawing + pinch-zoom + tap-to-edit (scroll disabled by parent)
+  // drawEnabled=false → tap-to-edit only, scroll passes through to parent ScrollView
+  drawEnabled: boolean;
   strokeColor?: string;
   onStrokeComplete?: (points: AnnotationPoint[]) => void;
   onAnnotationTap?: (annotation: AnnotationRow) => void;
+  // readOnly=true → pinch/pan/tap for navigation (feedback viewer)
   readOnly?: boolean;
+  // imageUrl renders the page inside the zoom transform so pinch-zoom moves both image and annotations
+  imageUrl?: string;
 }
 
 function pointsToPath(points: AnnotationPoint[], w: number, h: number): string {
@@ -82,18 +87,19 @@ export default function AnnotationCanvas({
   height,
   savedAnnotations,
   localAnnotations,
-  mode,
-  strokeColor = TOOL_COLORS.freehand,
+  drawEnabled,
+  strokeColor = '#DC2626',
   onStrokeComplete,
   onAnnotationTap,
   readOnly = false,
+  imageUrl,
 }: Props) {
   // Zoom / pan — plain Animated.Values (no Reanimated plugin needed)
   const scaleAnim  = useRef(new Animated.Value(1)).current;
   const txAnim     = useRef(new Animated.Value(0)).current;
   const tyAnim     = useRef(new Animated.Value(0)).current;
 
-  // JS-side mirrors of the animated values so gesture math is cheap
+  // JS-side mirrors for gesture math
   const sRef  = useRef(1);
   const txRef = useRef(0);
   const tyRef = useRef(0);
@@ -106,8 +112,6 @@ export default function AnnotationCanvas({
   const [livePoints, setLivePoints] = useState<AnnotationPoint[]>([]);
   const strokeRef = useRef<AnnotationPoint[]>([]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
   function setTransform(s: number, tx: number, ty: number) {
     sRef.current = s;
     txRef.current = tx;
@@ -117,7 +121,35 @@ export default function AnnotationCanvas({
     tyAnim.setValue(ty);
   }
 
-  // ── Navigate gestures ──────────────────────────────────────────────────────
+  // ── Tap gesture — always active, hits nearest annotation ──────────────────
+
+  const tapGesture = Gesture.Tap()
+    .maxDeltaX(8)
+    .maxDeltaY(8)
+    .runOnJS(true)
+    .onEnd((e) => {
+      if (!onAnnotationTap) return;
+      const s  = sRef.current;
+      const tx = txRef.current;
+      const ty = tyRef.current;
+      const cx = (e.x - tx - width / 2) / s + width / 2;
+      const cy = (e.y - ty - height / 2) / s + height / 2;
+      let nearest: AnnotationRow | null = null;
+      let nearestDist = 24; // px threshold in content space
+      for (const ann of savedAnnotations) {
+        if (!ann.points?.length) continue;
+        const ax = ann.points[0].x * width;
+        const ay = ann.points[0].y * height;
+        const d = Math.hypot(ax - cx, ay - cy);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearest = ann;
+        }
+      }
+      if (nearest) onAnnotationTap(nearest);
+    });
+
+  // ── Navigate gestures (readOnly mode) ─────────────────────────────────────
 
   const pinchGesture = Gesture.Pinch()
     .runOnJS(true)
@@ -128,7 +160,6 @@ export default function AnnotationCanvas({
     })
     .onUpdate((e) => {
       const newS = Math.min(4, Math.max(1, baseS.current * e.scale));
-      // Keep focal point stationary during scale
       const rawTx = e.focalX - (e.focalX - width / 2 - baseTx.current) * (newS / baseS.current) - width / 2;
       const rawTy = e.focalY - (e.focalY - height / 2 - baseTy.current) * (newS / baseS.current) - height / 2;
       setTransform(newS, clampOffset(rawTx, newS, width), clampOffset(rawTy, newS, height));
@@ -158,28 +189,6 @@ export default function AnnotationCanvas({
     .onEnd(() => {
       baseTx.current = txRef.current;
       baseTy.current = tyRef.current;
-    });
-
-  const tapGesture = Gesture.Tap()
-    .maxDeltaX(8)
-    .maxDeltaY(8)
-    .runOnJS(true)
-    .onEnd((e) => {
-      if (!onAnnotationTap) return;
-      const s  = sRef.current;
-      const tx = txRef.current;
-      const ty = tyRef.current;
-      const cx = (e.x - tx - width / 2) / s + width / 2;
-      const cy = (e.y - ty - height / 2) / s + height / 2;
-      for (const ann of savedAnnotations) {
-        if (!ann.points?.length) continue;
-        const ax = ann.points[0].x * width;
-        const ay = ann.points[0].y * height;
-        if (Math.hypot(ax - cx, ay - cy) < 20) {
-          onAnnotationTap(ann);
-          return;
-        }
-      }
     });
 
   const navGesture = Gesture.Simultaneous(
@@ -216,12 +225,16 @@ export default function AnnotationCanvas({
       setLivePoints([]);
     });
 
-  // Pinch zoom still works in annotate mode (2-finger vs 1-finger draw)
-  const annotateGesture = Gesture.Simultaneous(pinchGesture, drawGesture);
+  // Simultaneous pinch + (tap-exclusive-draw): quick tap opens details, movement draws
+  const annotateGesture = Gesture.Simultaneous(
+    pinchGesture,
+    Gesture.Exclusive(tapGesture, drawGesture),
+  );
 
-  const activeGesture = readOnly
-    ? navGesture
-    : mode === 'navigate'
+  // readOnly        → navGesture (pinch/pan/tap — feedback viewer)
+  // drawEnabled     → annotateGesture (pinch + exclusive(tap, draw))
+  // !drawEnabled    → navGesture (pinch/pan/tap — browse mode, no scroll conflict in full-screen layout)
+  const activeGesture = (readOnly || !drawEnabled)
     ? navGesture
     : annotateGesture;
 
@@ -235,6 +248,13 @@ export default function AnnotationCanvas({
             { transform: [{ scale: scaleAnim }, { translateX: txAnim }, { translateY: tyAnim }] },
           ]}
         >
+          {imageUrl && (
+            <Image
+              source={{ uri: imageUrl }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="contain"
+            />
+          )}
           <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
             {/* Saved annotations from backend */}
             {savedAnnotations.map((ann) =>
@@ -242,7 +262,7 @@ export default function AnnotationCanvas({
                 <Path
                   key={ann.id}
                   d={pointsToPath(ann.points, width, height)}
-                  stroke="#0E7490"
+                  stroke={(ann.style?.strokeColor as string | undefined) ?? '#DC2626'}
                   strokeWidth={3}
                   fill="none"
                   strokeLinecap="round"
@@ -251,14 +271,13 @@ export default function AnnotationCanvas({
               ) : null,
             )}
 
-            {/* Tap targets in navigate mode */}
-            {!readOnly && mode === 'navigate' &&
-              savedAnnotations.map((ann) => {
+            {/* Tap targets — shown for both teacher and student */}
+            {savedAnnotations.map((ann) => {
                 if (!ann.points?.length) return null;
                 const pt = ann.points[0];
                 const color = ann.mistakeType
-                  ? (MISTAKE_DOT_COLORS[ann.mistakeType] ?? '#0E7490')
-                  : '#0E7490';
+                  ? (MISTAKE_DOT_COLORS[ann.mistakeType] ?? '#DC2626')
+                  : '#DC2626';
                 return (
                   <Circle
                     key={`dot-${ann.id}`}
@@ -284,7 +303,7 @@ export default function AnnotationCanvas({
                       ? '#DC2626'
                       : local.status === 'saving'
                       ? '#9CA3AF'
-                      : (local.strokeColor ?? '#0E7490')
+                      : (local.strokeColor ?? '#DC2626')
                   }
                   strokeWidth={3}
                   strokeOpacity={local.status === 'saving' ? 0.5 : 1}

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
+import { requireTeacher } from '../middleware/requireRole';
 import { mediaService } from '../services/MediaService';
 import { supabaseAdmin } from '../db/client';
 import { AppError } from '../types';
@@ -18,7 +19,7 @@ const SignedUploadUrlSchema = z.object({
 });
 
 const SignedReadUrlSchema = z.object({
-  mediaType: z.enum(['student_recording', 'teacher_voice_note']),
+  mediaType: z.enum(['student_recording', 'teacher_voice_note', 'review_voice_note']),
   storageKey: z.string().min(1),
 });
 
@@ -66,6 +67,83 @@ router.post('/media/signed-read-url', authenticate, async (req, res, next) => {
       body.mediaType,
       body.storageKey,
       req.user!.role,
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/media/voice-note-upload-url — teacher gets a signed upload URL for a voice note
+const VoiceNoteUploadSchema = z.object({
+  submissionId: z.string().uuid(),
+  attemptId: z.string().uuid(),
+  annotationId: z.string().uuid(),
+  contentType: z.string().min(1),
+});
+
+router.post('/media/voice-note-upload-url', authenticate, requireTeacher, async (req, res, next) => {
+  try {
+    const body = VoiceNoteUploadSchema.parse(req.body);
+
+    // Verify the annotation belongs to this teacher
+    const { data: ann } = await supabaseAdmin
+      .from('annotations')
+      .select('id, teacher_id')
+      .eq('id', body.annotationId)
+      .eq('teacher_id', req.user!.id)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (!ann) throw new AppError(404, 'Annotation not found or not yours');
+
+    const result = await mediaService.getVoiceNoteUploadUrl(
+      req.user!.id,
+      body.submissionId,
+      body.attemptId,
+      body.annotationId,
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/media/review-voice-note-upload-url — teacher gets a signed upload URL for a review voice note
+const ReviewVoiceNoteUploadSchema = z.object({
+  submissionId: z.string().uuid(),
+  attemptId: z.string().uuid(),
+  contentType: z.string().min(1),
+});
+
+router.post('/media/review-voice-note-upload-url', authenticate, requireTeacher, async (req, res, next) => {
+  try {
+    const body = ReviewVoiceNoteUploadSchema.parse(req.body);
+
+    // Verify the attempt belongs to a submission assigned to this teacher
+    const { data: sub } = await supabaseAdmin
+      .from('submissions')
+      .select('id, assignment_id')
+      .eq('id', body.submissionId)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (!sub) throw new AppError(404, 'Submission not found');
+
+    const { data: assignment } = await supabaseAdmin
+      .from('assignments')
+      .select('id, teacher_id')
+      .eq('id', sub.assignment_id)
+      .maybeSingle();
+
+    if (!assignment || assignment.teacher_id !== req.user!.id) {
+      throw new AppError(403, 'Not your assignment');
+    }
+
+    const result = await mediaService.getReviewVoiceNoteUploadUrl(
+      req.user!.id,
+      body.submissionId,
+      body.attemptId,
     );
     res.json(result);
   } catch (err) {

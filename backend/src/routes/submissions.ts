@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
-import { requireTeacherOrAbove } from '../middleware/requireRole';
+import { requireTeacher, requireTeacherOrAbove } from '../middleware/requireRole';
 import { submissionService } from '../services/SubmissionService';
 import { attemptService } from '../services/AttemptService';
 import { mediaService } from '../services/MediaService';
+import { supabaseAdmin } from '../db/client';
+import { AppError } from '../types';
 
 const router = Router();
 
@@ -183,6 +185,173 @@ router.post(
         pageStatus,
       );
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── Review voice notes ────────────────────────────────────────────────────────
+
+function toReviewVoiceNoteRow(row: Record<string, unknown>) {
+  return {
+    id: row.id as string,
+    submissionAttemptId: row.submission_attempt_id as string,
+    teacherId: row.teacher_id as string,
+    audioStorageKey: row.audio_storage_key as string,
+    durationMs: (row.duration_ms as number | null) ?? null,
+    contentType: (row.content_type as string | null) ?? null,
+    sizeBytes: (row.size_bytes as number | null) ?? null,
+    deletedAt: (row.deleted_at as string | null) ?? null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+const ReviewVoiceNoteSchema = z.object({
+  audioStorageKey: z.string().min(1),
+  durationMs: z.number().int().positive().optional(),
+  contentType: z.string().optional(),
+  sizeBytes: z.number().int().positive().optional(),
+});
+
+// GET /api/submissions/:submissionId/attempts/:attemptId/review-voice-note
+// Returns the active review voice note row, or null if none.
+// Accessible by the student who owns the submission and the assigned teacher.
+router.get(
+  '/submissions/:submissionId/attempts/:attemptId/review-voice-note',
+  authenticate,
+  async (req, res, next) => {
+    try {
+      const { submissionId, attemptId } = req.params;
+
+      const { data: sub } = await supabaseAdmin
+        .from('submissions')
+        .select('id, student_id, assignment_id')
+        .eq('id', submissionId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (!sub) throw new AppError(404, 'Submission not found');
+
+      const userId = req.user!.id;
+      const role = req.user!.role;
+
+      if (role === 'student' && sub.student_id !== userId) {
+        throw new AppError(403, 'Access denied');
+      }
+
+      if (role === 'teacher') {
+        const { data: assignment } = await supabaseAdmin
+          .from('assignments')
+          .select('teacher_id')
+          .eq('id', sub.assignment_id)
+          .maybeSingle();
+        if (!assignment || assignment.teacher_id !== userId) {
+          throw new AppError(403, 'Not your assignment');
+        }
+      }
+
+      const { data: rvn } = await supabaseAdmin
+        .from('review_voice_notes')
+        .select('*')
+        .eq('submission_attempt_id', attemptId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      res.json(rvn ? toReviewVoiceNoteRow(rvn as Record<string, unknown>) : null);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/submissions/:submissionId/attempts/:attemptId/review-voice-note
+// Save (or replace) the review voice note for an attempt.
+router.post(
+  '/submissions/:submissionId/attempts/:attemptId/review-voice-note',
+  authenticate,
+  requireTeacher,
+  async (req, res, next) => {
+    try {
+      const { submissionId, attemptId } = req.params;
+      const body = ReviewVoiceNoteSchema.parse(req.body);
+
+      const { data: sub } = await supabaseAdmin
+        .from('submissions')
+        .select('id, assignment_id')
+        .eq('id', submissionId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (!sub) throw new AppError(404, 'Submission not found');
+
+      const { data: assignment } = await supabaseAdmin
+        .from('assignments')
+        .select('teacher_id')
+        .eq('id', sub.assignment_id)
+        .maybeSingle();
+
+      if (!assignment || assignment.teacher_id !== req.user!.id) {
+        throw new AppError(403, 'Not your assignment');
+      }
+
+      // Soft-delete any existing active review voice note for this attempt
+      await supabaseAdmin
+        .from('review_voice_notes')
+        .update({ deleted_at: new Date().toISOString(), deleted_by: req.user!.id })
+        .eq('submission_attempt_id', attemptId)
+        .is('deleted_at', null);
+
+      const { data: rvn, error } = await supabaseAdmin
+        .from('review_voice_notes')
+        .insert({
+          submission_attempt_id: attemptId,
+          teacher_id: req.user!.id,
+          audio_storage_key: body.audioStorageKey,
+          duration_ms: body.durationMs ?? null,
+          content_type: body.contentType ?? null,
+          size_bytes: body.sizeBytes ?? null,
+        })
+        .select()
+        .single();
+
+      if (error || !rvn) {
+        throw new AppError(500, `Failed to save review voice note: ${error?.message ?? 'unknown'}`);
+      }
+
+      res.status(201).json(toReviewVoiceNoteRow(rvn as Record<string, unknown>));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// DELETE /api/submissions/:submissionId/attempts/:attemptId/review-voice-note
+router.delete(
+  '/submissions/:submissionId/attempts/:attemptId/review-voice-note',
+  authenticate,
+  requireTeacher,
+  async (req, res, next) => {
+    try {
+      const { attemptId } = req.params;
+
+      const { data: rvn } = await supabaseAdmin
+        .from('review_voice_notes')
+        .select('id, teacher_id')
+        .eq('submission_attempt_id', attemptId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (!rvn) throw new AppError(404, 'No review voice note found');
+      if (rvn.teacher_id !== req.user!.id) throw new AppError(403, 'Not your voice note');
+
+      await supabaseAdmin
+        .from('review_voice_notes')
+        .update({ deleted_at: new Date().toISOString(), deleted_by: req.user!.id })
+        .eq('id', rvn.id);
+
+      res.json({ success: true });
     } catch (err) {
       next(err);
     }

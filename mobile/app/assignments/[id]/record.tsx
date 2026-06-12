@@ -96,7 +96,12 @@ export default function RecordScreen() {
       isRecordingRef.current = false;
       setRecordedUri(recorder.uri);
       setState("stopped");
-      await setAudioModeAsync({ allowsRecording: false });
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
+        interruptionMode: 'duckOthers',
+      });
     } catch (e: unknown) {
       Alert.alert(
         "Recording Error",

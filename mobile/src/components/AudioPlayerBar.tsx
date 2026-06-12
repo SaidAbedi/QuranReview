@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import { getRecordingUrl } from '@/api/teacher';
 
 interface Props {
   submissionId: string;
   attemptId: string;
+  // compact=true renders inline play/pause + time suitable for a toolbar
+  compact?: boolean;
 }
 
-export default function AudioPlayerBar({ submissionId, attemptId }: Props) {
+export default function AudioPlayerBar({ submissionId, attemptId, compact = false }: Props) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
@@ -32,6 +34,7 @@ export default function AudioPlayerBar({ submissionId, attemptId }: Props) {
   };
 
   if (loadingUrl) {
+    if (compact) return <ActivityIndicator color="#fff" size="small" />;
     return (
       <View style={styles.bar}>
         <ActivityIndicator color="#1B4F72" />
@@ -41,6 +44,10 @@ export default function AudioPlayerBar({ submissionId, attemptId }: Props) {
   }
 
   if (urlError) {
+    // No recording in storage yet (e.g. seeded/test attempt) — hide the bar silently
+    if (urlError.toLowerCase().includes('not found') || urlError.toLowerCase().includes('object not found')) {
+      return null;
+    }
     return (
       <View style={styles.bar}>
         <Text style={styles.error}>{urlError}</Text>
@@ -52,11 +59,36 @@ export default function AudioPlayerBar({ submissionId, attemptId }: Props) {
   const currentTime = status.currentTime ?? 0;
   const duration = status.duration ?? 0;
 
+  const handlePlayPause = async () => {
+    if (!isPlaying) {
+      // Configure audio session for speaker playback before each play.
+      // On a real iOS device this ensures audio routes to the speaker, not the earpiece.
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: false,
+        shouldRouteThroughEarpiece: false,
+        interruptionMode: 'duckOthers',
+      });
+      player.play();
+    } else {
+      player.pause();
+    }
+  };
+
+  if (compact) {
+    return (
+      <TouchableOpacity style={styles.compactBtn} onPress={handlePlayPause} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
+        <Text style={styles.compactIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+        <Text style={styles.compactTime}>{formatTime(currentTime)}</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View style={styles.bar}>
       <TouchableOpacity
         style={styles.playBtn}
-        onPress={() => (isPlaying ? player.pause() : player.play())}
+        onPress={handlePlayPause}
         accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
       >
         <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
@@ -96,4 +128,11 @@ const styles = StyleSheet.create({
   timeSep: { fontSize: 13, color: '#9CA3AF' },
   label: { fontSize: 12, color: '#9CA3AF', flex: 1, textAlign: 'right' },
   error: { fontSize: 13, color: '#DC2626', flex: 1 },
+  compactBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: '#F3F4F6', borderRadius: 8,
+  },
+  compactIcon: { fontSize: 16, color: '#1B4F72' },
+  compactTime: { fontSize: 13, color: '#374151', fontVariant: ['tabular-nums'] },
 });

@@ -155,6 +155,13 @@ export default function ReviewDetailScreen() {
     }
   }, [loadAnnotations, submissionId, attemptId, pageNumber]);
 
+  // Clear canvas immediately when switching to a different attempt so the
+  // previous attempt's marks don't show while the new fetch is in flight.
+  useEffect(() => {
+    setSavedAnnotations([]);
+    setLocalAnnotations([]);
+  }, [attemptId]);
+
   useEffect(() => {
     return () => {
       if (rvnTimerRef.current) clearInterval(rvnTimerRef.current);

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,6 @@ import { getQuranPage } from '@/api/quran';
 import { createSelfPacedSubmission } from '@/api/submissions';
 import { C } from '@/constants/colors';
 import { ApiError } from '@/api/client';
-import { useEffect } from 'react';
 import type { QuranPageSummary } from '@/types/api';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -25,7 +24,7 @@ export default function QuranPageScreen() {
   const pageNumber = parseInt(pageParam ?? '1', 10);
   const router = useRouter();
 
-  const [page, setPage]           = useState<QuranPageSummary | null>(null);
+  const [page, setPage]             = useState<QuranPageSummary | null>(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [submitting, setSubmitting]   = useState(false);
 
@@ -57,7 +56,15 @@ export default function QuranPageScreen() {
     }
   }, [pageNumber, router]);
 
-  // Compute image display dimensions maintaining 1300:2103 aspect ratio
+  // Stub — wired in next step when we fetch submissions for this page
+  const handleFeedback = useCallback(() => {
+    Alert.alert(
+      'Feedback',
+      'No teacher feedback yet for this page. Record your recitation and your teacher will annotate it.',
+      [{ text: 'OK' }],
+    );
+  }, []);
+
   const imgW = SCREEN_W;
   const imgH = page?.width && page?.height
     ? Math.round(SCREEN_W * (page.height / page.width))
@@ -71,7 +78,7 @@ export default function QuranPageScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        bounces={true}
+        bounces={false}
       >
         {loadingPage ? (
           <View style={[styles.imagePlaceholder, { height: imgH }]}>
@@ -90,71 +97,91 @@ export default function QuranPageScreen() {
         )}
       </ScrollView>
 
-      {/* Pinned bottom action */}
       <View style={styles.footer}>
+        {/* Primary action */}
         <TouchableOpacity
-          style={[styles.reciteBtn, submitting && styles.reciteBtnDisabled]}
+          style={[styles.reciteBtn, submitting && styles.btnDisabled]}
           onPress={handleRecite}
           disabled={submitting}
-          activeOpacity={0.85}
+          activeOpacity={0.82}
         >
           {submitting ? (
-            <ActivityIndicator color={C.white} />
+            <ActivityIndicator color={C.white} size="small" />
           ) : (
             <>
-              <Text style={styles.reciteBtnIcon}>🎙</Text>
-              <Text style={styles.reciteBtnLabel}>Recite This Page</Text>
+              <Text style={styles.reciteIcon}>🎙</Text>
+              <Text style={styles.reciteLabel}>Recite</Text>
             </>
           )}
         </TouchableOpacity>
-        <Text style={styles.footerNote}>
-          Your recitation will be sent to your teacher for review.
-        </Text>
+
+        {/* Secondary action — wired in next step */}
+        <TouchableOpacity
+          style={styles.feedbackBtn}
+          onPress={handleFeedback}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.feedbackIcon}>📋</Text>
+          <Text style={styles.feedbackLabel}>Feedback</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: C.white },
 
   scroll:        { flex: 1 },
-  scrollContent: { flexGrow: 1, alignItems: 'center' },
+  scrollContent: { flexGrow: 1 },
 
   imagePlaceholder: {
     width: SCREEN_W,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111',
+    backgroundColor: C.grayBg,
   },
-  placeholderText: { color: '#888', fontSize: 14 },
+  placeholderText: { color: C.textMuted, fontSize: 14 },
 
   footer: {
-    backgroundColor: C.white,
-    paddingHorizontal: 20,
-    paddingTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 28,
+    backgroundColor: C.white,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: C.border,
-    gap: 8,
   },
 
+  // Recite — takes 65% of the row
   reciteBtn: {
-    backgroundColor: C.blue,
-    borderRadius: 14,
-    paddingVertical: 16,
+    flex: 3,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
+    backgroundColor: C.blue,
+    borderRadius: 14,
+    paddingVertical: 14,
   },
-  reciteBtnDisabled: { opacity: 0.6 },
-  reciteBtnIcon:  { fontSize: 20 },
-  reciteBtnLabel: { fontSize: 17, fontWeight: '700', color: C.white },
+  btnDisabled:  { opacity: 0.55 },
+  reciteIcon:   { fontSize: 18 },
+  reciteLabel:  { fontSize: 16, fontWeight: '700', color: C.white },
 
-  footerNote: {
-    fontSize: 12,
-    color: C.textMuted,
-    textAlign: 'center',
+  // Feedback — takes 35% of the row
+  feedbackBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: C.white,
+    borderRadius: 14,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: C.border,
   },
+  feedbackIcon:  { fontSize: 16 },
+  feedbackLabel: { fontSize: 14, fontWeight: '600', color: C.textMuted },
 });

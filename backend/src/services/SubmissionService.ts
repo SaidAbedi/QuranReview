@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../db/client';
 import { AppError, SubmissionStatus, UserRole } from '../types';
 import { mediaService, MediaService } from './MediaService';
+import { quranContentService } from './QuranContentService';
 
 export interface CreateSubmissionInput {
   assignmentId: string;
@@ -208,6 +209,67 @@ export class SubmissionService {
 
     if (error) throw new AppError(500, 'Failed to fetch submissions');
     return (data ?? []).map((r) => toSubmissionRow(r as Record<string, unknown>));
+  }
+
+  // Student-initiated self-paced recitation.
+  // Creates only the assignment (assignment_type = 'self_paced').
+  // The mobile record screen calls createSubmission() as normal from there.
+  async createSelfPacedAssignment(
+    studentId: string,
+    pageNumber: number,
+  ): Promise<{ assignmentId: string; pageNumber: number }> {
+    // Verify student has an active teacher
+    const { data: rel } = await supabaseAdmin
+      .from('teacher_student_relationships')
+      .select('teacher_id')
+      .eq('student_id', studentId)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (!rel) {
+      throw new AppError(
+        403,
+        'No active teacher assigned. Contact your teacher to get started.',
+      );
+    }
+
+    // Enforce one active self-paced assignment at a time
+    const { data: existing } = await supabaseAdmin
+      .from('assignments')
+      .select('id')
+      .eq('student_id', studentId)
+      .eq('assignment_type', 'self_paced')
+      .not('status', 'in', '(completed,archived)')
+      .maybeSingle();
+
+    if (existing) {
+      throw new AppError(
+        409,
+        'You already have a self-paced recitation pending review. Wait for your teacher\'s feedback before submitting another.',
+      );
+    }
+
+    // Resolve quran_pages UUID (creates a minimal row if this page hasn't been seen yet)
+    const page = await quranContentService.getPage(pageNumber);
+
+    const { data: assignment, error } = await supabaseAdmin
+      .from('assignments')
+      .insert({
+        teacher_id: rel.teacher_id,
+        student_id: studentId,
+        quran_page_id: page.id,
+        title: `Page ${pageNumber}`,
+        assignment_type: 'self_paced',
+        status: 'assigned',
+      })
+      .select('id')
+      .single();
+
+    if (error || !assignment) {
+      throw new AppError(500, `Failed to create self-paced assignment: ${error?.message ?? 'unknown'}`);
+    }
+
+    return { assignmentId: assignment.id as string, pageNumber };
   }
 }
 

@@ -34,7 +34,13 @@ export interface AssignmentSummary {
   instructions: string | null;
   dueAt: string | null;
   status: string;
+  assignmentType: string;
   createdAt: string;
+}
+
+export interface SelfPacedResult {
+  assignmentId: string;
+  pageNumber: number;
 }
 
 // ── Submissions / Attempts ───────────────────────────────────────────────────

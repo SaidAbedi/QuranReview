@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { CreateSubmissionResult, CreateAttemptResult, SubmissionRow, AttemptRow } from '@/types/api';
+import type { CreateSubmissionResult, CreateAttemptResult, SubmissionRow, AttemptRow, SelfPacedResult } from '@/types/api';
 
 export const createSubmission = (assignmentId: string) =>
   api.post<CreateSubmissionResult>('/submissions', { assignmentId });
@@ -15,3 +15,6 @@ export const getSubmissionAttempts = (submissionId: string) =>
 
 export const getSignedReadUrl = (storagePath: string) =>
   api.post<{ signedUrl: string }>('/media/signed-read-url', { storagePath });
+
+export const createSelfPacedSubmission = (pageNumber: number) =>
+  api.post<SelfPacedResult>('/student/self-paced-submissions', { pageNumber });

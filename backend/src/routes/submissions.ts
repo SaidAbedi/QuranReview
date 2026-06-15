@@ -34,7 +34,24 @@ const PaginationSchema = z.object({
   offset: z.string().transform(Number).pipe(z.number().int().min(0)).optional(),
 });
 
+const SelfPacedSchema = z.object({
+  pageNumber: z.number().int().min(1).max(604),
+});
+
 // ── Student: submission list ──────────────────────────────────────────────────
+
+// POST /api/student/self-paced-submissions — student initiates a self-paced recitation
+// Creates the assignment only; the mobile record screen calls POST /submissions as normal.
+router.post('/student/self-paced-submissions', authenticate, async (req, res, next) => {
+  try {
+    if (req.user!.role !== 'student') throw new AppError(403, 'Students only');
+    const { pageNumber } = SelfPacedSchema.parse(req.body);
+    const result = await submissionService.createSelfPacedAssignment(req.user!.id, pageNumber);
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/student/submissions — student's own submissions
 router.get('/student/submissions', authenticate, async (req, res, next) => {

@@ -35,6 +35,8 @@ export default function TabsLayout() {
         name="index"
         options={{ title: 'Assignments', headerRight: () => <SignOutButton /> }}
       />
+      <Tabs.Screen name="quran" options={{ title: 'Quran', headerShown: false }} />
+      <Tabs.Screen name="progress" options={{ headerShown: false }} />
       <Tabs.Screen
         name="notifications"
         options={{
@@ -42,7 +44,6 @@ export default function TabsLayout() {
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
         }}
       />
-      <Tabs.Screen name="progress" options={{ headerShown: false }} />
     </Tabs>
   );
 }

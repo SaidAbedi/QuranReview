@@ -21,6 +21,7 @@ export interface AssignmentSummary {
   instructions: string | null;
   dueAt: string | null;
   status: string;
+  assignmentType: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,6 +54,7 @@ export interface TeacherStudentSubmission {
   assignmentId: string;
   pageNumber: number | null;
   assignmentTitle: string | null;
+  assignmentType: string;
   status: string;
   attemptCount: number;
   currentAttemptId: string | null;
@@ -64,7 +66,7 @@ export interface TeacherStudentSubmission {
 
 const ASSIGNMENT_SELECT = `
   id, teacher_id, student_id, quran_page_id,
-  title, instructions, due_at, status,
+  title, instructions, due_at, status, assignment_type,
   created_at, updated_at,
   quran_pages ( page_number, image_url )
 `;
@@ -410,7 +412,7 @@ export class AssignmentService {
     const { data, error } = await supabaseAdmin
       .from('submissions')
       .select(
-        'id, assignment_id, current_attempt_id, status, submitted_at, reviewed_at, completed_at, created_at, updated_at, assignments!inner(teacher_id, title, quran_pages(page_number))',
+        'id, assignment_id, current_attempt_id, status, submitted_at, reviewed_at, completed_at, created_at, updated_at, assignments!inner(teacher_id, title, assignment_type, quran_pages(page_number))',
       )
       .eq('student_id', studentId)
       .eq('assignments.teacher_id', teacherId)
@@ -442,6 +444,7 @@ export class AssignmentService {
         assignmentId: r.assignment_id as string,
         pageNumber: page ? (page.page_number as number) : null,
         assignmentTitle: (asgn.title as string | null) ?? null,
+        assignmentType: (asgn.assignment_type as string | null) ?? 'teacher_assigned',
         status: r.status as string,
         attemptCount: attemptCountMap.get(r.id as string) ?? 0,
         currentAttemptId: (r.current_attempt_id as string | null) ?? null,
@@ -467,6 +470,7 @@ function toAssignmentSummary(row: Record<string, unknown>): AssignmentSummary {
     instructions: (row.instructions as string | null) ?? null,
     dueAt: (row.due_at as string | null) ?? null,
     status: row.status as string,
+    assignmentType: (row.assignment_type as string | null) ?? 'teacher_assigned',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

@@ -1,6 +1,7 @@
 import { Alert, Text, TouchableOpacity } from 'react-native';
 import { Tabs } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { useUnreadCount } from '@/hooks/useUnreadCount';
 
 function SignOutButton() {
   const handleSignOut = () => {
@@ -17,6 +18,8 @@ function SignOutButton() {
 }
 
 export default function TeacherTabsLayout() {
+  const { unreadCount } = useUnreadCount();
+
   return (
     <Tabs
       screenOptions={{
@@ -35,6 +38,13 @@ export default function TeacherTabsLayout() {
       <Tabs.Screen
         name="students"
         options={{ title: 'Students', headerShown: false }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+        }}
       />
     </Tabs>
   );

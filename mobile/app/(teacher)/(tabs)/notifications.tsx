@@ -19,10 +19,10 @@ import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 
 const TYPE_ICONS: Record<string, string> = {
+  student_submitted_attempt:     '📩',
   teacher_completed_review:      '✅',
   teacher_requested_resubmission:'🔁',
   voice_note_added:              '🎙',
-  student_submitted_attempt:     '📩',
   admin_assigned_teacher:        '👤',
   student_assigned_to_teacher:   '👤',
   attempt_comment_added:         '💬',
@@ -40,13 +40,7 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function NotificationItem({
-  item,
-  onPress,
-}: {
-  item: NotificationRow;
-  onPress: () => void;
-}) {
+function NotificationItem({ item, onPress }: { item: NotificationRow; onPress: () => void }) {
   const icon = TYPE_ICONS[item.type] ?? '🔔';
   const isUnread = !item.readAt;
 
@@ -60,12 +54,8 @@ function NotificationItem({
         <Text style={styles.icon}>{icon}</Text>
       </View>
       <View style={styles.itemContent}>
-        <Text style={[styles.itemTitle, isUnread && styles.itemTitleUnread]}>
-          {item.title}
-        </Text>
-        {item.body ? (
-          <Text style={styles.itemBody} numberOfLines={2}>{item.body}</Text>
-        ) : null}
+        <Text style={[styles.itemTitle, isUnread && styles.itemTitleUnread]}>{item.title}</Text>
+        {item.body ? <Text style={styles.itemBody} numberOfLines={2}>{item.body}</Text> : null}
         <Text style={styles.itemTime}>{relativeTime(item.createdAt)}</Text>
       </View>
       {isUnread && <View style={styles.dot} />}
@@ -73,12 +63,12 @@ function NotificationItem({
   );
 }
 
-export default function NotificationsScreen() {
-  const [items, setItems]           = useState<NotificationRow[]>([]);
+export default function TeacherNotificationsScreen() {
+  const [items, setItems]             = useState<NotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading]       = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError]           = useState<string | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [refreshing, setRefreshing]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -96,8 +86,6 @@ export default function NotificationsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  // Reload when tab comes into focus so badge stays in sync
   useFocusEffect(useCallback(() => { load(true); }, [load]));
 
   const handleMarkRead = async (id: string) => {
@@ -195,11 +183,11 @@ const styles = StyleSheet.create({
   iconWrapUnread: { backgroundColor: '#DBEAFE' },
   icon: { fontSize: 18 },
 
-  itemContent: { flex: 1, gap: 2 },
-  itemTitle:   { fontSize: 14, fontWeight: '600', color: C.text, lineHeight: 20 },
+  itemContent:     { flex: 1, gap: 2 },
+  itemTitle:       { fontSize: 14, fontWeight: '600', color: C.text, lineHeight: 20 },
   itemTitleUnread: { color: C.blue },
-  itemBody:    { fontSize: 13, color: C.textMuted, lineHeight: 18 },
-  itemTime:    { fontSize: 11, color: C.grayLight, marginTop: 2 },
+  itemBody:        { fontSize: 13, color: C.textMuted, lineHeight: 18 },
+  itemTime:        { fontSize: 11, color: C.grayLight, marginTop: 2 },
 
   dot: {
     width: 8, height: 8, borderRadius: 4,

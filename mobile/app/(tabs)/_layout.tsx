@@ -1,6 +1,7 @@
 import { Alert, Text, TouchableOpacity } from 'react-native';
 import { Tabs } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { useUnreadCount } from '@/hooks/useUnreadCount';
 
 function SignOutButton() {
   const handleSignOut = () => {
@@ -9,7 +10,6 @@ function SignOutButton() {
       { text: 'Sign Out', style: 'destructive', onPress: () => supabase.auth.signOut() },
     ]);
   };
-
   return (
     <TouchableOpacity onPress={handleSignOut} style={{ marginRight: 16 }}>
       <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
@@ -18,6 +18,8 @@ function SignOutButton() {
 }
 
 export default function TabsLayout() {
+  const { unreadCount } = useUnreadCount();
+
   return (
     <Tabs
       screenOptions={{
@@ -33,7 +35,13 @@ export default function TabsLayout() {
         name="index"
         options={{ title: 'Assignments', headerRight: () => <SignOutButton /> }}
       />
-      <Tabs.Screen name="notifications" options={{ title: 'Notifications' }} />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+        }}
+      />
       <Tabs.Screen name="progress" options={{ headerShown: false }} />
     </Tabs>
   );

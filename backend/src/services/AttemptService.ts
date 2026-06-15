@@ -35,10 +35,11 @@ export class AttemptService {
     studentId: string,
     input: CreateAttemptInput,
   ): Promise<CreateAttemptResult> {
-    // Ownership: submission must belong to this student
+    // Ownership: submission must belong to this student.
+    // Also join assignment to get teacher_id + page_number for the submission notification.
     const { data: sub } = await supabaseAdmin
       .from('submissions')
-      .select('id, quran_page_id, assignment_id, status')
+      .select('id, quran_page_id, assignment_id, status, assignments!inner(teacher_id, quran_pages(page_number))')
       .eq('id', submissionId)
       .eq('student_id', studentId)
       .maybeSingle();
@@ -109,6 +110,29 @@ export class AttemptService {
       submissionId,
       nextAttemptNumber,
     );
+
+    // Notify teacher — fire and forget, non-blocking
+    const subRow = sub as Record<string, unknown>;
+    const asgn = subRow.assignments as Record<string, unknown> | null;
+    const teacherId = asgn?.teacher_id as string | undefined;
+    const pageData = asgn?.quran_pages as Record<string, unknown> | null;
+    const pageNumber = pageData?.page_number as number | undefined;
+    if (teacherId) {
+      void Promise.resolve(supabaseAdmin.from('notifications').insert({
+        recipient_user_id: teacherId,
+        actor_user_id: studentId,
+        type: 'student_submitted_attempt',
+        title: 'New recording submitted',
+        body: pageNumber
+          ? `Page ${pageNumber} has been submitted for review.`
+          : 'A student submitted a new recording.',
+        data: { submissionId, attemptId: attempt.id as string, assignmentId: sub.assignment_id },
+        channel: 'in_app',
+        delivery_status: 'pending',
+      })).catch((err: unknown) => {
+        console.error('[AttemptService] Failed to create submission notification:', err);
+      });
+    }
 
     return {
       attempt: toAttemptRow(attempt),

@@ -279,7 +279,7 @@ router.post(
 
       const { data: sub } = await supabaseAdmin
         .from('submissions')
-        .select('id, assignment_id')
+        .select('id, student_id, assignment_id')
         .eq('id', submissionId)
         .is('deleted_at', null)
         .maybeSingle();
@@ -288,7 +288,7 @@ router.post(
 
       const { data: assignment } = await supabaseAdmin
         .from('assignments')
-        .select('teacher_id')
+        .select('teacher_id, quran_pages(page_number)')
         .eq('id', sub.assignment_id)
         .maybeSingle();
 
@@ -319,6 +319,23 @@ router.post(
       if (error || !rvn) {
         throw new AppError(500, `Failed to save review voice note: ${error?.message ?? 'unknown'}`);
       }
+
+      // Notify student — fire and forget
+      const pageNumber = (assignment.quran_pages as unknown as Record<string, unknown> | null)?.page_number as number | undefined;
+      void Promise.resolve(supabaseAdmin.from('notifications').insert({
+        recipient_user_id: sub.student_id,
+        actor_user_id: req.user!.id,
+        type: 'voice_note_added',
+        title: 'Your teacher left a voice note',
+        body: pageNumber
+          ? `Open your feedback for page ${pageNumber} to listen.`
+          : "Open your feedback to listen to your teacher's voice note.",
+        data: { submissionId, attemptId, assignmentId: sub.assignment_id },
+        channel: 'in_app',
+        delivery_status: 'pending',
+      })).catch((err: unknown) => {
+        console.error('[submissions] Failed to create voice note notification:', err);
+      });
 
       res.status(201).json(toReviewVoiceNoteRow(rvn as Record<string, unknown>));
     } catch (err) {

@@ -296,3 +296,30 @@ export interface StudentProgressSummary {
   snapshotFresh: boolean;
   calculatedAt: string | null;
 }
+
+export interface PageProgressItem {
+  pageNumber: number;
+  quranPageId: string;
+  status: string;
+  attemptCount: number;
+  completedAt: string | null;
+}
+
+export interface SurahProgressDetail {
+  surahNumber: number;
+  surahName: string | null;
+  totalPagesInSurah: number;
+  pagesAssigned: number;
+  pagesCompleted: number;
+  completionPercent: number;
+  pages: PageProgressItem[];
+}
+
+export interface JuzProgressDetail {
+  juzNumber: number;
+  totalPagesInJuz: number;
+  pagesAssigned: number;
+  pagesCompleted: number;
+  completionPercent: number;
+  pages: PageProgressItem[];
+}

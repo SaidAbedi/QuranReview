@@ -34,7 +34,7 @@ export default function TabsLayout() {
         options={{ title: 'Assignments', headerRight: () => <SignOutButton /> }}
       />
       <Tabs.Screen name="notifications" options={{ title: 'Notifications' }} />
-      <Tabs.Screen name="progress" options={{ title: 'Progress' }} />
+      <Tabs.Screen name="progress" options={{ headerShown: false }} />
     </Tabs>
   );
 }

@@ -20,10 +20,10 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen';
 
 const SUBMISSION_STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
-  submitted: 'Submitted',
+  submitted: 'Teacher Reviewing',
   in_review: 'Teacher Reviewing',
-  reviewed: 'Reviewed',
-  needs_resubmission: 'Returned for Practice',
+  reviewed: 'Feedback Available',
+  needs_resubmission: 'Needs Practice',
   completed: 'Completed',
   archived: 'Archived',
 };
@@ -39,10 +39,10 @@ const SUBMISSION_STATUS_COLORS: Record<string, string> = {
 };
 
 const ATTEMPT_STATUS_LABELS: Record<string, string> = {
-  submitted: 'Submitted',
-  in_review: 'In Review',
-  reviewed: 'Reviewed',
-  needs_resubmission: 'Returned',
+  submitted: 'Teacher Reviewing',
+  in_review: 'Teacher Reviewing',
+  reviewed: 'Feedback Available',
+  needs_resubmission: 'Needs Practice',
   completed: 'Completed',
 };
 

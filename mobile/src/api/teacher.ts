@@ -3,6 +3,8 @@ import type {
   AttemptRow,
   ReviewVoiceNoteRow,
   TeacherQueueItem,
+  TeacherStudentSummary,
+  TeacherStudentSubmission,
   CompleteReviewResult,
   SignedReadUrlResult,
   MistakeCategoryRow,
@@ -23,6 +25,17 @@ export const getTeacherReviewQueue = async (): Promise<TeacherQueueItem[]> => {
   const data = await api.get<TeacherQueueItem[]>('/teacher/review-queue');
   return data.map(normalizeQueueItem);
 };
+
+export const getTeacherAllSubmissions = async (): Promise<TeacherQueueItem[]> => {
+  const data = await api.get<TeacherQueueItem[]>('/teacher/all-submissions');
+  return data.map(normalizeQueueItem);
+};
+
+export const getTeacherStudents = (): Promise<TeacherStudentSummary[]> =>
+  api.get<TeacherStudentSummary[]>('/teacher/students');
+
+export const getTeacherStudentSubmissions = (studentId: string): Promise<TeacherStudentSubmission[]> =>
+  api.get<TeacherStudentSubmission[]>(`/teacher/students/${studentId}/submissions`);
 
 export const getRecordingUrl = (
   submissionId: string,

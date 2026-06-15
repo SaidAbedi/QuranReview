@@ -119,6 +119,29 @@ export interface CompleteReviewResult {
   pageProgressStatus: string;
 }
 
+export interface TeacherStudentSummary {
+  studentId: string;
+  studentName: string;
+  pagesAssigned: number;
+  pagesCompleted: number;
+  pagesNeedsResubmission: number;
+  lastActivityAt: string;
+}
+
+export interface TeacherStudentSubmission {
+  submissionId: string;
+  assignmentId: string;
+  pageNumber: number | null;
+  assignmentTitle: string | null;
+  status: string;
+  attemptCount: number;
+  currentAttemptId: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
 // ── Annotations ──────────────────────────────────────────────────────────────
 
 export type AnnotationType =

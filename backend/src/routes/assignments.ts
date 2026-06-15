@@ -88,7 +88,7 @@ router.get('/student/assignments/:id', authenticate, async (req, res, next) => {
   }
 });
 
-// GET /api/teacher/review-queue — teacher's submissions awaiting review
+// GET /api/teacher/review-queue — submissions awaiting teacher review (submitted only)
 router.get(
   '/teacher/review-queue',
   authenticate,
@@ -96,6 +96,52 @@ router.get(
   async (req, res, next) => {
     try {
       const result = await assignmentService.getTeacherReviewQueue(req.user!.id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/teacher/all-submissions — all active submissions (submitted + in_review + reviewed + needs_resubmission + completed)
+router.get(
+  '/teacher/all-submissions',
+  authenticate,
+  requireTeacherOrAbove,
+  async (req, res, next) => {
+    try {
+      const result = await assignmentService.getTeacherAllSubmissions(req.user!.id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/teacher/students — deduplicated student roster with progress summary
+router.get(
+  '/teacher/students',
+  authenticate,
+  requireTeacherOrAbove,
+  async (req, res, next) => {
+    try {
+      const result = await assignmentService.getTeacherStudents(req.user!.id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/teacher/students/:studentId/submissions — all submissions for one of this teacher's students
+router.get(
+  '/teacher/students/:studentId/submissions',
+  authenticate,
+  requireTeacherOrAbove,
+  async (req, res, next) => {
+    try {
+      const { studentId } = z.object({ studentId: z.string().uuid() }).parse(req.params);
+      const result = await assignmentService.getTeacherStudentSubmissions(req.user!.id, studentId);
       res.json(result);
     } catch (err) {
       next(err);

@@ -39,6 +39,29 @@ export interface TeacherQueueItem extends AssignmentSummary {
 // Legacy alias used by the route stub — keep for backward compat.
 export type AssignmentRow = AssignmentSummary;
 
+export interface TeacherStudentSummary {
+  studentId: string;
+  studentName: string;
+  pagesAssigned: number;
+  pagesCompleted: number;
+  pagesNeedsResubmission: number;
+  lastActivityAt: string;
+}
+
+export interface TeacherStudentSubmission {
+  submissionId: string;
+  assignmentId: string;
+  pageNumber: number | null;
+  assignmentTitle: string | null;
+  status: string;
+  attemptCount: number;
+  currentAttemptId: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
 const ASSIGNMENT_SELECT = `
   id, teacher_id, student_id, quran_page_id,
   title, instructions, due_at, status,
@@ -229,6 +252,203 @@ export class AssignmentService {
         attemptNumber: sub ? ((sub.attempt_number as number | null) ?? null) : null,
         submissionStatus: sub ? (sub.status as string) : null,
         submittedAt: sub ? ((sub.submitted_at as string | null) ?? null) : null,
+      };
+    });
+  }
+
+  // All non-pending submissions for the teacher's queue — includes submitted,
+  // in_review, reviewed, needs_resubmission, completed. Used for the "All" filter.
+  async getTeacherAllSubmissions(teacherId: string): Promise<TeacherQueueItem[]> {
+    const ACTIVE_STATUSES = ['submitted', 'in_review', 'reviewed', 'needs_resubmission', 'completed'];
+    const { data, error } = await supabaseAdmin
+      .from('assignments')
+      .select(ASSIGNMENT_SELECT)
+      .eq('teacher_id', teacherId)
+      .in('status', ACTIVE_STATUSES)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw new AppError(500, 'Failed to fetch submissions');
+    if (!data || data.length === 0) return [];
+
+    const assignments = data as Record<string, unknown>[];
+    const assignmentIds = assignments.map((a) => a.id as string);
+    const studentIds = [...new Set(assignments.map((a) => a.student_id as string))];
+
+    const { data: students } = await supabaseAdmin
+      .from('users')
+      .select('id, display_name')
+      .in('id', studentIds);
+
+    const nameMap = new Map(
+      (students ?? []).map((s) => {
+        const r = s as Record<string, unknown>;
+        return [r.id as string, (r.display_name as string | null) ?? 'Unknown'];
+      }),
+    );
+
+    const { data: subs } = await supabaseAdmin
+      .from('submissions')
+      .select('id, assignment_id, current_attempt_id, status, submitted_at')
+      .in('assignment_id', assignmentIds);
+
+    const subsList = (subs ?? []) as Record<string, unknown>[];
+    const currentAttemptIds = subsList
+      .map((s) => s.current_attempt_id as string | null)
+      .filter((id): id is string => id !== null);
+
+    let attemptNumMap = new Map<string, number>();
+    if (currentAttemptIds.length > 0) {
+      const { data: attempts } = await supabaseAdmin
+        .from('submission_attempts')
+        .select('id, attempt_number')
+        .in('id', currentAttemptIds);
+      attemptNumMap = new Map(
+        (attempts ?? []).map((a) => {
+          const r = a as Record<string, unknown>;
+          return [r.id as string, r.attempt_number as number];
+        }),
+      );
+    }
+
+    const submissionRows = subsList.map((s) => {
+      const caid = s.current_attempt_id as string | null;
+      return { ...s, attempt_number: caid ? (attemptNumMap.get(caid) ?? null) : null } as Record<string, unknown>;
+    });
+
+    const subByAssignment = new Map(
+      submissionRows.map((r) => [r.assignment_id as string, r]),
+    );
+
+    return assignments.map((a) => {
+      const base = toAssignmentSummary(a);
+      const sub = subByAssignment.get(a.id as string) ?? null;
+      return {
+        ...base,
+        studentName: nameMap.get(a.student_id as string) ?? 'Unknown',
+        submissionId: sub ? (sub.id as string) : null,
+        currentAttemptId: sub ? ((sub.current_attempt_id as string | null) ?? null) : null,
+        attemptNumber: sub ? ((sub.attempt_number as number | null) ?? null) : null,
+        submissionStatus: sub ? (sub.status as string) : null,
+        submittedAt: sub ? ((sub.submitted_at as string | null) ?? null) : null,
+      };
+    });
+  }
+
+  async getTeacherStudents(teacherId: string): Promise<TeacherStudentSummary[]> {
+    const { data: assignments, error } = await supabaseAdmin
+      .from('assignments')
+      .select('student_id, updated_at')
+      .eq('teacher_id', teacherId)
+      .neq('status', 'archived');
+
+    if (error) throw new AppError(500, 'Failed to fetch students');
+    if (!assignments || assignments.length === 0) return [];
+
+    const rows = assignments as Record<string, unknown>[];
+
+    // Deduplicate students, track assignment count and latest activity
+    const studentMeta = new Map<string, { count: number; lastActivityAt: string }>();
+    for (const a of rows) {
+      const sid = a.student_id as string;
+      const updatedAt = a.updated_at as string;
+      const existing = studentMeta.get(sid);
+      if (existing) {
+        existing.count++;
+        if (updatedAt > existing.lastActivityAt) existing.lastActivityAt = updatedAt;
+      } else {
+        studentMeta.set(sid, { count: 1, lastActivityAt: updatedAt });
+      }
+    }
+
+    const studentIds = [...studentMeta.keys()];
+
+    const [{ data: users }, { data: pageProgress }] = await Promise.all([
+      supabaseAdmin.from('users').select('id, display_name').in('id', studentIds),
+      supabaseAdmin
+        .from('student_page_progress')
+        .select('student_id, status')
+        .in('student_id', studentIds),
+    ]);
+
+    const nameMap = new Map(
+      (users ?? []).map((u) => {
+        const r = u as Record<string, unknown>;
+        return [r.id as string, (r.display_name as string) ?? 'Unknown'];
+      }),
+    );
+
+    const progressMap = new Map<string, { completed: number; needsPractice: number }>();
+    for (const sid of studentIds) progressMap.set(sid, { completed: 0, needsPractice: 0 });
+    for (const p of (pageProgress ?? []) as Record<string, unknown>[]) {
+      const sid = p.student_id as string;
+      const status = p.status as string;
+      const entry = progressMap.get(sid);
+      if (entry) {
+        if (status === 'completed') entry.completed++;
+        if (status === 'needs_resubmission') entry.needsPractice++;
+      }
+    }
+
+    return studentIds.map((sid) => {
+      const meta = studentMeta.get(sid)!;
+      const prog = progressMap.get(sid)!;
+      return {
+        studentId: sid,
+        studentName: nameMap.get(sid) ?? 'Unknown',
+        pagesAssigned: meta.count,
+        pagesCompleted: prog.completed,
+        pagesNeedsResubmission: prog.needsPractice,
+        lastActivityAt: meta.lastActivityAt,
+      };
+    });
+  }
+
+  async getTeacherStudentSubmissions(
+    teacherId: string,
+    studentId: string,
+  ): Promise<TeacherStudentSubmission[]> {
+    const { data, error } = await supabaseAdmin
+      .from('submissions')
+      .select(
+        'id, assignment_id, current_attempt_id, status, submitted_at, reviewed_at, completed_at, created_at, updated_at, assignments!inner(teacher_id, title, quran_pages(page_number))',
+      )
+      .eq('student_id', studentId)
+      .eq('assignments.teacher_id', teacherId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new AppError(500, 'Failed to fetch student submissions');
+    if (!data || data.length === 0) return [];
+
+    const rows = data as Record<string, unknown>[];
+    const submissionIds = rows.map((r) => r.id as string);
+
+    const { data: attempts } = await supabaseAdmin
+      .from('submission_attempts')
+      .select('submission_id')
+      .in('submission_id', submissionIds)
+      .is('deleted_at', null);
+
+    const attemptCountMap = new Map<string, number>();
+    for (const a of (attempts ?? []) as Record<string, unknown>[]) {
+      const sid = a.submission_id as string;
+      attemptCountMap.set(sid, (attemptCountMap.get(sid) ?? 0) + 1);
+    }
+
+    return rows.map((r) => {
+      const asgn = r.assignments as Record<string, unknown>;
+      const page = asgn.quran_pages as Record<string, unknown> | null;
+      return {
+        submissionId: r.id as string,
+        assignmentId: r.assignment_id as string,
+        pageNumber: page ? (page.page_number as number) : null,
+        assignmentTitle: (asgn.title as string | null) ?? null,
+        status: r.status as string,
+        attemptCount: attemptCountMap.get(r.id as string) ?? 0,
+        currentAttemptId: (r.current_attempt_id as string | null) ?? null,
+        submittedAt: (r.submitted_at as string | null) ?? null,
+        reviewedAt: (r.reviewed_at as string | null) ?? null,
+        completedAt: (r.completed_at as string | null) ?? null,
+        createdAt: r.created_at as string,
       };
     });
   }

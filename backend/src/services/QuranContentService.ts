@@ -16,6 +16,136 @@ export interface QuranPageSummary {
   imageUrl: string | null;
   width: number | null;
   height: number | null;
+  surahNameEnglish: string | null;
+}
+
+// Static lookup: first surah that starts on or before each page (Hafs Uthmani / QCF V2, 604 pages).
+// Each entry is [startPage, surahNumber, surahNameEnglish].
+// Source: Medina Mushaf standard layout — these page starts are fixed.
+const SURAH_PAGE_STARTS: [number, string][] = [
+  [1,   'Al-Fatiha'],
+  [2,   'Al-Baqarah'],
+  [50,  "Ali 'Imran"],
+  [77,  "An-Nisa'"],
+  [106, "Al-Ma'idah"],
+  [128, "Al-An'am"],
+  [151, "Al-A'raf"],
+  [177, 'Al-Anfal'],
+  [187, 'At-Tawbah'],
+  [208, 'Yunus'],
+  [221, 'Hud'],
+  [235, 'Yusuf'],
+  [249, "Ar-Ra'd"],
+  [255, 'Ibrahim'],
+  [262, 'Al-Hijr'],
+  [267, 'An-Nahl'],
+  [282, "Al-Isra'"],
+  [293, 'Al-Kahf'],
+  [305, 'Maryam'],
+  [312, 'Ta-Ha'],
+  [322, "Al-Anbiya'"],
+  [332, 'Al-Hajj'],
+  [342, "Al-Mu'minun"],
+  [350, 'An-Nur'],
+  [359, 'Al-Furqan'],
+  [367, "Ash-Shu'ara'"],
+  [377, 'An-Naml'],
+  [385, 'Al-Qasas'],
+  [396, "Al-'Ankabut"],
+  [404, 'Ar-Rum'],
+  [411, 'Luqman'],
+  [415, 'As-Sajdah'],
+  [418, 'Al-Ahzab'],
+  [428, "Saba'"],
+  [434, 'Fatir'],
+  [440, 'Ya-Sin'],
+  [446, 'As-Saffat'],
+  [453, 'Sad'],
+  [458, 'Az-Zumar'],
+  [467, 'Ghafir'],
+  [477, 'Fussilat'],
+  [483, 'Ash-Shura'],
+  [489, 'Az-Zukhruf'],
+  [496, 'Ad-Dukhan'],
+  [499, 'Al-Jathiyah'],
+  [502, 'Al-Ahqaf'],
+  [507, 'Muhammad'],
+  [511, 'Al-Fath'],
+  [515, 'Al-Hujurat'],
+  [518, 'Qaf'],
+  [520, 'Adh-Dhariyat'],
+  [523, 'At-Tur'],
+  [526, 'An-Najm'],
+  [528, 'Al-Qamar'],
+  [531, 'Ar-Rahman'],
+  [534, "Al-Waqi'ah"],
+  [537, 'Al-Hadid'],
+  [542, 'Al-Mujadila'],
+  [545, 'Al-Hashr'],
+  [549, 'Al-Mumtahanah'],
+  [551, 'As-Saf'],
+  [553, "Al-Jumu'ah"],
+  [554, 'Al-Munafiqun'],
+  [556, 'At-Taghabun'],
+  [558, 'At-Talaq'],
+  [560, 'At-Tahrim'],
+  [562, 'Al-Mulk'],
+  [564, 'Al-Qalam'],
+  [566, 'Al-Haqqah'],
+  [568, "Al-Ma'arij"],
+  [570, 'Nuh'],
+  [572, 'Al-Jinn'],
+  [574, 'Al-Muzzammil'],
+  [575, 'Al-Muddaththir'],
+  [577, 'Al-Qiyamah'],
+  [578, 'Al-Insan'],
+  [580, 'Al-Mursalat'],
+  [582, "An-Naba'"],
+  [583, "An-Nazi'at"],
+  [585, 'Abasa'],
+  [586, 'At-Takwir'],
+  [587, 'Al-Infitar'],
+  [587, 'Al-Mutaffifin'],
+  [589, 'Al-Inshiqaq'],
+  [590, 'Al-Buruj'],
+  [591, 'At-Tariq'],
+  [591, "Al-A'la"],
+  [592, 'Al-Ghashiyah'],
+  [593, 'Al-Fajr'],
+  [594, 'Al-Balad'],
+  [595, 'Ash-Shams'],
+  [595, 'Al-Layl'],
+  [596, 'Ad-Duha'],
+  [596, 'Ash-Sharh'],
+  [597, 'At-Tin'],
+  [597, "Al-'Alaq"],
+  [598, 'Al-Qadr'],
+  [598, 'Al-Bayyinah'],
+  [599, 'Az-Zalzalah'],
+  [599, "Al-'Adiyat"],
+  [600, "Al-Qari'ah"],
+  [600, 'At-Takathur'],
+  [601, "Al-'Asr"],
+  [601, 'Al-Humazah'],
+  [601, 'Al-Fil'],
+  [602, 'Quraysh'],
+  [602, "Al-Ma'un"],
+  [602, 'Al-Kawthar'],
+  [603, 'Al-Kafirun'],
+  [603, 'An-Nasr'],
+  [603, 'Al-Masad'],
+  [604, 'Al-Ikhlas'],
+  [604, 'Al-Falaq'],
+  [604, 'An-Nas'],
+];
+
+export function surahNameForPage(pageNumber: number): string {
+  let name = 'Al-Fatiha';
+  for (const [startPage, surahName] of SURAH_PAGE_STARTS) {
+    if (startPage <= pageNumber) name = surahName;
+    else break;
+  }
+  return name;
 }
 
 export interface PageSurahMapping {
@@ -208,15 +338,28 @@ export class QuranContentService {
   // Called by assignment creation to resolve a page number to its DB UUID,
   // and by GET /api/quran/pages/:pageNumber on the mobile-facing route.
   async getPage(pageNumber: number): Promise<QuranPageSummary> {
+    const surahName = surahNameForPage(pageNumber);
+    const SELECT = 'id, page_number, mushaf_id, storage_path, image_url, width, height, primary_surah_name_english';
+
     const { data: cached } = await supabaseAdmin
       .from('quran_pages')
-      .select('id, page_number, mushaf_id, storage_path, image_url, width, height')
+      .select(SELECT)
       .eq('provider', 'quran_foundation')
       .eq('provider_mushaf_id', this.mushafId)
       .eq('page_number', pageNumber)
       .maybeSingle();
 
-    if (cached) return this.toPageSummary(cached);
+    if (cached) {
+      // Backfill the surah name if the column was null (rows created before migration 011)
+      if (!cached.primary_surah_name_english) {
+        void supabaseAdmin
+          .from('quran_pages')
+          .update({ primary_surah_name_english: surahName })
+          .eq('id', cached.id)
+          .then(() => {});
+      }
+      return this.toPageSummary({ ...cached, primary_surah_name_english: cached.primary_surah_name_english ?? surahName });
+    }
 
     const { data: created, error } = await supabaseAdmin
       .from('quran_pages')
@@ -225,8 +368,9 @@ export class QuranContentService {
         provider_mushaf_id: this.mushafId,
         mushaf_id: 'qcf_v2',
         page_number: pageNumber,
+        primary_surah_name_english: surahName,
       })
-      .select('id, page_number, mushaf_id, storage_path, image_url, width, height')
+      .select(SELECT)
       .single();
 
     if (error) throw new AppError(500, `Failed to cache Quran page ${pageNumber}`);
@@ -320,6 +464,7 @@ export class QuranContentService {
       imageUrl,
       width: (row.width as number | null) ?? null,
       height: (row.height as number | null) ?? null,
+      surahNameEnglish: (row.primary_surah_name_english as string | null) ?? null,
     };
   }
 
@@ -363,6 +508,7 @@ export class QuranContentService {
       imageUrl,
       width: (pageRow?.width as number | null) ?? null,
       height: (pageRow?.height as number | null) ?? null,
+      surahNameEnglish: (pageRow?.primary_surah_name_english as string | null) ?? surahNameForPage(pageNumber),
       verseImages,
       mappings: mappings.map((m) => ({
         surahNumber: m.surah_number as number,
@@ -470,6 +616,7 @@ export class QuranContentService {
       imageUrl: fetchedImageUrl,
       width: (pageRow.width as number | null) ?? null,
       height: (pageRow.height as number | null) ?? null,
+      surahNameEnglish: surahNameForPage(pageNumber),
       verseImages,
       mappings,
       ...(includeWords

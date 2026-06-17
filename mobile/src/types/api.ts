@@ -29,6 +29,7 @@ export interface AssignmentSummary {
   studentId: string;
   quranPageId: string;
   pageNumber: number | null;
+  surahNameEnglish: string | null;
   imageUrl?: string | null;
   title: string | null;
   instructions: string | null;
@@ -272,11 +273,13 @@ export interface ReviewVoiceNoteRow {
 // ── Quran pages ──────────────────────────────────────────────────────────────
 
 export interface QuranPageSummary {
+  id: string;
   pageNumber: number;
   mushafId?: string;
   imageUrl: string | null;
   width: number | null;
   height: number | null;
+  surahNameEnglish: string | null;
 }
 
 // ── Notifications ────────────────────────────────────────────────────────────

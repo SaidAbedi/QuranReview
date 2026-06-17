@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../db/client';
 import { AppError, UserRole } from '../types';
-import { quranContentService } from './QuranContentService';
+import { quranContentService, surahNameForPage } from './QuranContentService';
 
 export interface CreateAssignmentInput {
   studentId: string;
@@ -16,6 +16,7 @@ export interface AssignmentSummary {
   studentId: string;
   quranPageId: string;
   pageNumber: number | null;
+  surahNameEnglish: string | null;
   imageUrl: string | null;
   title: string | null;
   instructions: string | null;
@@ -459,12 +460,14 @@ export class AssignmentService {
 
 function toAssignmentSummary(row: Record<string, unknown>): AssignmentSummary {
   const p = row.quran_pages as Record<string, unknown> | null;
+  const pageNumber = (p?.page_number as number | null) ?? null;
   return {
     id: row.id as string,
     teacherId: row.teacher_id as string,
     studentId: row.student_id as string,
     quranPageId: row.quran_page_id as string,
-    pageNumber: (p?.page_number as number | null) ?? null,
+    pageNumber,
+    surahNameEnglish: pageNumber != null ? surahNameForPage(pageNumber) : null,
     imageUrl: (p?.image_url as string | null) ?? null,
     title: (row.title as string | null) ?? null,
     instructions: (row.instructions as string | null) ?? null,

@@ -166,7 +166,13 @@ export default function AssignmentDetailScreen() {
     return <ErrorScreen message={error ?? 'Assignment not found'} onRetry={() => load()} />;
 
   const title =
-    assignment.title ?? (assignment.pageNumber ? `Page ${assignment.pageNumber}` : 'Assignment');
+    assignment.title && assignment.title !== `Page ${assignment.pageNumber}`
+      ? assignment.title
+      : assignment.surahNameEnglish && assignment.pageNumber != null
+        ? `${assignment.surahNameEnglish} — Page ${assignment.pageNumber}`
+        : assignment.pageNumber != null
+          ? `Page ${assignment.pageNumber}`
+          : 'Assignment';
   const statusLabel = submission
     ? (SUBMISSION_STATUS_LABELS[submission.status] ?? submission.status)
     : null;
@@ -192,8 +198,8 @@ export default function AssignmentDetailScreen() {
         </TouchableOpacity>
         <View style={styles.topBarCenter}>
           <Text style={styles.topBarTitle} numberOfLines={1}>{title}</Text>
-          {assignment.pageNumber != null && (
-            <Text style={styles.topBarSub}>Quran Page {assignment.pageNumber}</Text>
+          {assignment.surahNameEnglish != null && (
+            <Text style={styles.topBarSub}>{assignment.surahNameEnglish}</Text>
           )}
         </View>
         {statusLabel && statusColor && (

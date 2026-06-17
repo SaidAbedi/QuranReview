@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { getTeacherAllSubmissions, getTeacherReviewQueue } from '@/api/teacher';
 import { C } from '@/constants/colors';
 import type { TeacherQueueItem } from '@/types/api';
@@ -141,7 +141,7 @@ export default function QueueScreen() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const handlePress = (item: TeacherQueueItem) => {
     if (!item.submissionId || !item.currentAttemptId) return;

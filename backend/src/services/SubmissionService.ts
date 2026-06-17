@@ -258,7 +258,9 @@ export class SubmissionService {
         teacher_id: rel.teacher_id,
         student_id: studentId,
         quran_page_id: page.id,
-        title: `Page ${pageNumber}`,
+        title: page.surahNameEnglish
+          ? `${page.surahNameEnglish} — Page ${pageNumber}`
+          : `Page ${pageNumber}`,
         assignment_type: 'self_paced',
         status: 'assigned',
       })

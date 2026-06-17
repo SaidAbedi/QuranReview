@@ -89,7 +89,13 @@ export default function AssignmentsScreen() {
           >
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle} numberOfLines={1}>
-                {item.title ?? (item.pageNumber ? `Page ${item.pageNumber}` : 'Assignment')}
+                {item.title && item.title !== `Page ${item.pageNumber}`
+                  ? item.title
+                  : item.surahNameEnglish && item.pageNumber != null
+                    ? `${item.surahNameEnglish} — Page ${item.pageNumber}`
+                    : item.pageNumber != null
+                      ? `Page ${item.pageNumber}`
+                      : 'Assignment'}
               </Text>
               <View
                 style={[
@@ -103,7 +109,11 @@ export default function AssignmentsScreen() {
               </View>
             </View>
             {item.pageNumber != null && (
-              <Text style={styles.cardMeta}>Quran Page {item.pageNumber}</Text>
+              <Text style={styles.cardMeta}>
+                {item.surahNameEnglish
+                  ? `${item.surahNameEnglish} · Page ${item.pageNumber}`
+                  : `Page ${item.pageNumber}`}
+              </Text>
             )}
             {item.dueAt && (
               <Text style={styles.cardMeta}>

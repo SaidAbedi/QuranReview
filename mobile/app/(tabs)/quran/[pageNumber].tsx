@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,21 +15,67 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getQuranPage } from '@/api/quran';
-import { createSelfPacedSubmission } from '@/api/submissions';
+import { createSelfPacedSubmission, getStudentSubmissions } from '@/api/submissions';
 import { C } from '@/constants/colors';
 import { ApiError } from '@/api/client';
-import type { QuranPageSummary } from '@/types/api';
+import type { QuranPageSummary, SubmissionRow } from '@/types/api';
 
 const { width: SCREEN_W } = Dimensions.get('window');
+
+const SCROLL_THRESHOLD = 8; // px delta before we react
 
 export default function QuranPageScreen() {
   const { pageNumber: pageParam } = useLocalSearchParams<{ pageNumber: string }>();
   const pageNumber = parseInt(pageParam ?? '1', 10);
   const router = useRouter();
 
-  const [page, setPage]             = useState<QuranPageSummary | null>(null);
-  const [loadingPage, setLoadingPage] = useState(true);
-  const [submitting, setSubmitting]   = useState(false);
+  const [page, setPage]               = useState<QuranPageSummary | null>(null);
+  const [loadingPage, setLoadingPage]   = useState(true);
+  const [submitting, setSubmitting]     = useState(false);
+  const [pageSubmissions, setPageSubmissions] = useState<SubmissionRow[]>([]);
+  const [footerH, setFooterH]           = useState(90); // real height from onLayout
+
+  // Auto-hide animation
+  const footerTranslate = useRef(new Animated.Value(0)).current;
+  const lastScrollY     = useRef(0);
+  const footerShown     = useRef(true);
+
+  const showFooter = useCallback(() => {
+    if (footerShown.current) return;
+    footerShown.current = true;
+    Animated.spring(footerTranslate, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 18,
+    }).start();
+  }, [footerTranslate]);
+
+  const hideFooter = useCallback((height: number) => {
+    if (!footerShown.current) return;
+    footerShown.current = false;
+    Animated.spring(footerTranslate, {
+      toValue: height,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 18,
+    }).start();
+  }, [footerTranslate]);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y     = e.nativeEvent.contentOffset.y;
+      const delta = y - lastScrollY.current;
+      lastScrollY.current = y;
+
+      if (delta > SCROLL_THRESHOLD) {
+        hideFooter(footerH);
+      } else if (delta < -SCROLL_THRESHOLD) {
+        showFooter();
+      }
+    },
+    [hideFooter, showFooter, footerH],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -36,6 +85,32 @@ export default function QuranPageScreen() {
       .catch(() => { if (!cancelled) setLoadingPage(false); });
     return () => { cancelled = true; };
   }, [pageNumber]);
+
+  useEffect(() => {
+    if (!page?.id) return;
+    const pageId = page.id;
+    getStudentSubmissions()
+      .then((subs) => {
+        setPageSubmissions(subs.filter((s) => s.quranPageId === pageId));
+      })
+      .catch(() => {});
+  }, [page?.id]);
+
+  const reviewedSubmission = useMemo<SubmissionRow | null>(() => {
+    const withFeedback = pageSubmissions.filter(
+      (s) =>
+        ['reviewed', 'completed', 'needs_resubmission'].includes(s.status) &&
+        s.currentAttemptId,
+    );
+    if (withFeedback.length === 0) return null;
+    return withFeedback.sort((a, b) => {
+      const ta = a.reviewedAt ?? a.updatedAt;
+      const tb = b.reviewedAt ?? b.updatedAt;
+      return new Date(tb).getTime() - new Date(ta).getTime();
+    })[0];
+  }, [pageSubmissions]);
+
+  const hasFeedback = !!reviewedSubmission;
 
   const handleRecite = useCallback(async () => {
     setSubmitting(true);
@@ -56,14 +131,23 @@ export default function QuranPageScreen() {
     }
   }, [pageNumber, router]);
 
-  // Stub — wired in next step when we fetch submissions for this page
   const handleFeedback = useCallback(() => {
-    Alert.alert(
-      'Feedback',
-      'No teacher feedback yet for this page. Record your recitation and your teacher will annotate it.',
-      [{ text: 'OK' }],
-    );
-  }, []);
+    if (!reviewedSubmission) {
+      Alert.alert(
+        'No Feedback Yet',
+        'Submit your recitation and your teacher will annotate it.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+    router.push({
+      pathname: '/assignments/[id]/feedback/[attemptId]',
+      params: {
+        id: reviewedSubmission.assignmentId,
+        attemptId: reviewedSubmission.currentAttemptId!,
+      },
+    });
+  }, [reviewedSubmission, router]);
 
   const imgW = SCREEN_W;
   const imgH = page?.width && page?.height
@@ -76,9 +160,11 @@ export default function QuranPageScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: footerH }]}
         showsVerticalScrollIndicator={false}
         bounces={false}
+        scrollEventThrottle={16}
+        onScroll={handleScroll}
       >
         {loadingPage ? (
           <View style={[styles.imagePlaceholder, { height: imgH }]}>
@@ -97,8 +183,10 @@ export default function QuranPageScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.footer}>
-        {/* Primary action */}
+      <Animated.View
+        style={[styles.footer, { transform: [{ translateY: footerTranslate }] }]}
+        onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
+      >
         <TouchableOpacity
           style={[styles.reciteBtn, submitting && styles.btnDisabled]}
           onPress={handleRecite}
@@ -115,16 +203,17 @@ export default function QuranPageScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Secondary action — wired in next step */}
         <TouchableOpacity
-          style={styles.feedbackBtn}
+          style={[styles.feedbackBtn, hasFeedback && styles.feedbackBtnActive]}
           onPress={handleFeedback}
           activeOpacity={0.75}
         >
           <Text style={styles.feedbackIcon}>📋</Text>
-          <Text style={styles.feedbackLabel}>Feedback</Text>
+          <Text style={[styles.feedbackLabel, hasFeedback && styles.feedbackLabelActive]}>
+            Feedback
+          </Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -144,6 +233,10 @@ const styles = StyleSheet.create({
   placeholderText: { color: C.textMuted, fontSize: 14 },
 
   footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     gap: 10,
     paddingHorizontal: 16,
@@ -154,7 +247,6 @@ const styles = StyleSheet.create({
     borderTopColor: C.border,
   },
 
-  // Recite — takes 65% of the row
   reciteBtn: {
     flex: 3,
     flexDirection: 'row',
@@ -169,7 +261,6 @@ const styles = StyleSheet.create({
   reciteIcon:   { fontSize: 18 },
   reciteLabel:  { fontSize: 16, fontWeight: '700', color: C.white },
 
-  // Feedback — takes 35% of the row
   feedbackBtn: {
     flex: 2,
     flexDirection: 'row',
@@ -182,6 +273,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: C.border,
   },
-  feedbackIcon:  { fontSize: 16 },
-  feedbackLabel: { fontSize: 14, fontWeight: '600', color: C.textMuted },
+  feedbackBtnActive:   { borderColor: C.blue },
+  feedbackIcon:        { fontSize: 16 },
+  feedbackLabel:       { fontSize: 14, fontWeight: '600', color: C.textMuted },
+  feedbackLabelActive: { color: C.blue },
 });

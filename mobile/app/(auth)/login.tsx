@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -44,7 +45,11 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={[styles.title, { color: T.brandPrimary }]}>QuranReview</Text>
+          <Image
+            source={require('../../assets/logo-dark.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={[styles.subtitle, { color: T.textMuted }]}>Sign in to continue</Text>
         </View>
 
@@ -88,6 +93,10 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </Link>
         </View>
+
+        <View style={styles.bottomFooter}>
+          <Text style={[styles.bottomFooterText, { color: T.textMuted }]}>Quran Institute of Dallas</Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -95,10 +104,10 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   flex:      { flex: 1 },
-  container: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  container: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingBottom: 32 },
   header:    { alignItems: 'center', marginBottom: 32 },
-  title:     { fontSize: 32, fontWeight: '700' },
-  subtitle:  { fontSize: 16, marginTop: 6 },
+  logo:      { width: 160, height: 160, marginBottom: 8 },
+  subtitle:  { fontSize: 15, marginTop: 4 },
   card: {
     borderRadius: 20,
     borderWidth: 1,
@@ -119,4 +128,6 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   footerText: { fontSize: 15 },
   link: { fontSize: 15, fontWeight: '600' },
+  bottomFooter: { alignItems: 'center', marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#e5e5e5' },
+  bottomFooterText: { fontSize: 12 },
 });

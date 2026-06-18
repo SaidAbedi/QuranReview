@@ -123,6 +123,10 @@ export default function RegisterScreen() {
             </TouchableOpacity>
           </Link>
         </View>
+
+        <View style={styles.bottomFooter}>
+          <Text style={[styles.bottomFooterText, { color: T.textMuted }]}>Quran Institute of Dallas</Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -130,9 +134,9 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   flex:      { flex: 1 },
-  container: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  container: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingBottom: 32 },
   header:    { alignItems: 'center', marginBottom: 32 },
-  logo:      { width: 220, height: 220 },
+  logo:      { width: 160, height: 160 },
   subtitle:  { fontSize: 15, marginTop: 4 },
   card: {
     borderRadius: 20,
@@ -154,4 +158,6 @@ const styles = StyleSheet.create({
   footer:     { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   footerText: { fontSize: 15 },
   link:       { fontSize: 15, fontWeight: '600' },
+  bottomFooter: { alignItems: 'center', marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#e5e5e5' },
+  bottomFooterText: { fontSize: 12 },
 });

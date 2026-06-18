@@ -74,31 +74,31 @@ function CurrentFocusCard({ focus }: { focus: CurrentFocus }) {
 
   let title = '';
   let completed = 0;
-  let assigned  = 0;
+  let total  = 0;
 
   if (focus.type === 'juz') {
     title     = `Juz ${focus.juzNumber}`;
     completed = focus.pagesCompleted;
-    assigned  = focus.pagesAssigned;
+    total     = focus.totalPages;
   } else if (focus.type === 'surah') {
     title     = getSurahName(focus.surahNumber);
     completed = focus.pagesCompleted;
-    assigned  = focus.pagesAssigned;
+    total     = focus.totalPages;
   } else {
-    title     = 'Assigned Pages';
+    title     = 'Quran Progress';
     completed = focus.pagesCompleted;
-    assigned  = focus.pagesAssigned;
+    total     = focus.totalPages;
   }
 
-  const pct = focusPercent(completed, assigned);
-  const msg = encouragingMessage(completed, assigned);
+  const pct = focusPercent(completed, total);
+  const msg = encouragingMessage(completed, total);
 
   return (
     <View style={[styles.focusCard, { backgroundColor: T.surface, borderLeftColor: T.brandPrimary, shadowColor: T.shadow }]}>
       <Text style={[styles.focusChip, { color: T.brandPrimary }]}>Current Focus</Text>
       <Text style={[styles.focusTitle, { color: T.textPrimary }]}>{title}</Text>
       <Text style={[styles.focusSub, { color: T.textMuted }]}>
-        {completed} of {assigned} assigned page{assigned !== 1 ? 's' : ''} completed
+        {completed} of {total} page{total !== 1 ? 's' : ''} completed
       </Text>
       <View style={styles.focusBarRow}>
         <View style={{ flex: 1 }}>
@@ -137,15 +137,15 @@ function StatusCard({
 function JuzRow({ juz, onPress }: { juz: JuzSnapshotEntry; onPress: () => void }) {
   const theme = useTheme();
   const T = theme.colors;
-  const pct      = focusPercent(juz.pagesCompleted, juz.pagesAssigned);
-  const complete = juz.pagesAssigned > 0 && juz.pagesCompleted >= juz.pagesAssigned;
+  const pct      = focusPercent(juz.pagesCompleted, juz.totalPagesInJuz);
+  const complete = juz.totalPagesInJuz > 0 && juz.pagesCompleted >= juz.totalPagesInJuz;
   const accentColor = complete ? T.success : T.brandPrimary;
   return (
     <TouchableOpacity style={styles.drillRow} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.drillLeft}>
         <Text style={[styles.drillTitle, { color: T.textPrimary }]}>Juz {juz.juzNumber}</Text>
         <Text style={[styles.drillSub, { color: T.textMuted }]}>
-          {juz.pagesCompleted} / {juz.pagesAssigned} pages
+          {juz.pagesCompleted} / {juz.totalPagesInJuz} pages
         </Text>
         <View style={styles.drillBarWrap}>
           <ProgressBar percent={pct} color={accentColor} height={4} />
@@ -164,8 +164,8 @@ function JuzRow({ juz, onPress }: { juz: JuzSnapshotEntry; onPress: () => void }
 function SurahRow({ surah, onPress }: { surah: SurahSnapshotEntry; onPress: () => void }) {
   const theme = useTheme();
   const T = theme.colors;
-  const pct      = focusPercent(surah.pagesCompleted, surah.pagesAssigned);
-  const complete = surah.pagesAssigned > 0 && surah.pagesCompleted >= surah.pagesAssigned;
+  const pct      = focusPercent(surah.pagesCompleted, surah.totalPagesInSurah);
+  const complete = surah.totalPagesInSurah > 0 && surah.pagesCompleted >= surah.totalPagesInSurah;
   const accentColor = complete ? T.success : T.brandPrimary;
   return (
     <TouchableOpacity style={styles.drillRow} onPress={onPress} activeOpacity={0.7}>
@@ -174,7 +174,7 @@ function SurahRow({ surah, onPress }: { surah: SurahSnapshotEntry; onPress: () =
           {surah.surahNumber}. {getSurahName(surah.surahNumber)}
         </Text>
         <Text style={[styles.drillSub, { color: T.textMuted }]}>
-          {surah.pagesCompleted} / {surah.pagesAssigned} pages
+          {surah.pagesCompleted} / {surah.totalPagesInSurah} pages
         </Text>
         <View style={styles.drillBarWrap}>
           <ProgressBar percent={pct} color={accentColor} height={4} />

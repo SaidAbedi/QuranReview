@@ -18,3 +18,8 @@ build/
 
 # Dependencies
 node_modules/
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3

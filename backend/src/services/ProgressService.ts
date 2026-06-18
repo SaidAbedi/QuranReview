@@ -22,12 +22,14 @@ export interface SurahSnapshotEntry {
   surahNumber: number;
   pagesCompleted: number;
   pagesAssigned: number;
+  totalPagesInSurah: number;
 }
 
 export interface JuzSnapshotEntry {
   juzNumber: number;
   pagesCompleted: number;
   pagesAssigned: number;
+  totalPagesInJuz: number;
 }
 
 export interface SurahProgressDetail {
@@ -111,10 +113,60 @@ export class ProgressService {
     const pagesCompleted = rows.filter((r) => r.status === 'completed').length;
     const pagesNeedsResubmission = rows.filter((r) => r.status === 'needs_resubmission').length;
 
+    // Fetch total pages per surah and juz (for all surahs/juz with progress)
+    let surahTotalPages: Record<string, number> = {};
+    let juzTotalPages: Record<string, number> = {};
+
     if (snap) {
       const s = snap as Record<string, unknown>;
       const surahSnap = (s.surah_progress as Record<string, Record<string, unknown>>) ?? {};
       const juzSnap = (s.juz_progress as Record<string, Record<string, unknown>>) ?? {};
+
+      // Get list of surahs/juzs with progress
+      const surahNumbers = Object.keys(surahSnap).map((k) => parseInt(k, 10));
+      const juzNumbers = Object.keys(juzSnap).map((k) => parseInt(k, 10));
+
+      // Fetch total pages per surah
+      if (surahNumbers.length > 0) {
+        const { data: surahMappings } = await supabaseAdmin
+          .from('quran_page_mappings')
+          .select('surah_number, quran_page_id')
+          .eq('provider_mushaf_id', 1)
+          .in('surah_number', surahNumbers);
+
+        const seenPages = new Set<string>();
+        for (const m of (surahMappings ?? [])) {
+          const row = m as Record<string, unknown>;
+          const surah = String(row.surah_number);
+          const pid = row.quran_page_id as string;
+          if (!seenPages.has(pid)) {
+            if (!surahTotalPages[surah]) surahTotalPages[surah] = 0;
+            surahTotalPages[surah]++;
+            seenPages.add(pid);
+          }
+        }
+      }
+
+      // Fetch total pages per juz
+      if (juzNumbers.length > 0) {
+        const { data: juzMappings } = await supabaseAdmin
+          .from('quran_page_mappings')
+          .select('juz_number, quran_page_id')
+          .eq('provider_mushaf_id', 1)
+          .in('juz_number', juzNumbers);
+
+        const seenPages = new Set<string>();
+        for (const m of (juzMappings ?? [])) {
+          const row = m as Record<string, unknown>;
+          const juz = String(row.juz_number);
+          const pid = row.quran_page_id as string;
+          if (!seenPages.has(pid)) {
+            if (!juzTotalPages[juz]) juzTotalPages[juz] = 0;
+            juzTotalPages[juz]++;
+            seenPages.add(pid);
+          }
+        }
+      }
 
       return {
         studentId,
@@ -129,11 +181,13 @@ export class ProgressService {
           surahNumber: parseInt(k, 10),
           pagesCompleted: (v.pages_completed as number) ?? 0,
           pagesAssigned: (v.pages_assigned as number) ?? 0,
+          totalPagesInSurah: surahTotalPages[k] ?? 0,
         })).sort((a, b) => a.surahNumber - b.surahNumber),
         juzBreakdown: Object.entries(juzSnap).map(([k, v]) => ({
           juzNumber: parseInt(k, 10),
           pagesCompleted: (v.pages_completed as number) ?? 0,
           pagesAssigned: (v.pages_assigned as number) ?? 0,
+          totalPagesInJuz: juzTotalPages[k] ?? 0,
         })).sort((a, b) => a.juzNumber - b.juzNumber),
         snapshotFresh: true,
         calculatedAt: s.calculated_at as string,
@@ -325,11 +379,43 @@ export class ProgressService {
     if (progressList.length > 0) {
       const quranPageIds = progressList.map((p) => p.quran_page_id as string);
 
+      // Get mappings for all pages in progress
       const { data: mappingRows } = await supabaseAdmin
         .from('quran_page_mappings')
         .select('quran_page_id, surah_number, juz_number')
         .eq('provider_mushaf_id', 1)
         .in('quran_page_id', quranPageIds);
+
+      // Also get total page counts per surah and juz for the entire Quran
+      const { data: allSurahMappings } = await supabaseAdmin
+        .from('quran_page_mappings')
+        .select('surah_number, quran_page_id')
+        .eq('provider_mushaf_id', 1);
+
+      const { data: allJuzMappings } = await supabaseAdmin
+        .from('quran_page_mappings')
+        .select('juz_number, quran_page_id')
+        .eq('provider_mushaf_id', 1);
+
+      // Count total pages per surah/juz (dedup by quran_page_id)
+      const surahTotalPages: Record<string, Set<string>> = {};
+      const juzTotalPages: Record<string, Set<string>> = {};
+
+      for (const m of (allSurahMappings ?? [])) {
+        const row = m as Record<string, unknown>;
+        const surah = String(row.surah_number);
+        const pid = row.quran_page_id as string;
+        if (!surahTotalPages[surah]) surahTotalPages[surah] = new Set();
+        surahTotalPages[surah].add(pid);
+      }
+
+      for (const m of (allJuzMappings ?? [])) {
+        const row = m as Record<string, unknown>;
+        const juz = String(row.juz_number);
+        const pid = row.quran_page_id as string;
+        if (!juzTotalPages[juz]) juzTotalPages[juz] = new Set();
+        juzTotalPages[juz].add(pid);
+      }
 
       const pageToMapping = new Map<string, { surah_number: number | null; juz_number: number | null }>();
       for (const m of (mappingRows ?? [])) {
@@ -354,6 +440,7 @@ export class ProgressService {
           surahProgress[key] = {
             pages_completed: (surahProgress[key]?.pages_completed ?? 0) + completed,
             pages_assigned: (surahProgress[key]?.pages_assigned ?? 0) + 1,
+            total_pages_in_surah: surahTotalPages[key]?.size ?? 0,
           };
         }
         if (mapping?.juz_number != null) {
@@ -361,6 +448,7 @@ export class ProgressService {
           juzProgress[key] = {
             pages_completed: (juzProgress[key]?.pages_completed ?? 0) + completed,
             pages_assigned: (juzProgress[key]?.pages_assigned ?? 0) + 1,
+            total_pages_in_juz: juzTotalPages[key]?.size ?? 0,
           };
         }
       }

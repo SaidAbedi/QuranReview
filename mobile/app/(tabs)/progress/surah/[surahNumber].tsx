@@ -109,7 +109,7 @@ export default function SurahDetailScreen() {
                 style={[styles.barFill, { width: `${pct}%` as `${number}%`, backgroundColor: pct === 100 ? T.success : T.brandPrimary }]}
               />
             </View>
-            <Text style={[styles.barLabel, { color: T.textMuted }]}>{pct}% of assigned pages complete</Text>
+            <Text style={[styles.barLabel, { color: T.textMuted }]}>{pct}% of total pages complete</Text>
           </View>
 
           {/* Page list */}

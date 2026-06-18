@@ -6,16 +6,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.quranreview.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "extraPodfileProperties": {
-        "EXPO_USE_PRECOMPILED_MODULES": "false"
       }
     },
     "android": {
@@ -37,7 +34,8 @@
     "plugins": [
       "expo-router",
       "expo-audio",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

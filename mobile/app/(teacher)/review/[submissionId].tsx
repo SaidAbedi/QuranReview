@@ -131,7 +131,7 @@ export default function ReviewDetailScreen() {
   const rvnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rvnRecordingRef = useRef(false);
   const rvnRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const rvnPlayer = useAudioPlayer(rvnPlayUrl ?? '');
+  const rvnPlayer = useAudioPlayer(rvnPlayUrl ?? undefined);
   const rvnPlayerStatus = useAudioPlayerStatus(rvnPlayer);
 
   // ── Load ───────────────────────────────────────────────────────────────────
@@ -452,6 +452,12 @@ export default function ReviewDetailScreen() {
         shouldRouteThroughEarpiece: false,
         interruptionMode: 'duckOthers',
       });
+      // Seek to start if at end so replay works on physical device.
+      const d = rvnPlayerStatus.duration ?? 0;
+      const t = rvnPlayerStatus.currentTime ?? 0;
+      if (d > 0 && t >= d - 0.5) {
+        await rvnPlayer.seekTo(0);
+      }
       rvnPlayer.play();
     } catch {
       Alert.alert('Playback Error', 'Could not load review voice note.');

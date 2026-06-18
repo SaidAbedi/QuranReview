@@ -73,6 +73,12 @@ export default function AudioPlayerBar({ submissionId, attemptId, compact = fals
         shouldRouteThroughEarpiece: false,
         interruptionMode: 'duckOthers',
       });
+      // If at or near the end, seek back to start so replay works.
+      // expo-audio leaves currentTime at the end position after finishing;
+      // calling play() from there does nothing on a physical device.
+      if (duration > 0 && currentTime >= duration - 0.5) {
+        await player.seekTo(0);
+      }
       player.play();
     } else {
       player.pause();

@@ -1,213 +1,321 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  FlatList,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import {
-  getNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-} from '@/api/notifications';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { getStudentAssignments } from '@/api/assignments';
+import { getStudentSubmissions } from '@/api/submissions';
 import { C } from '@/constants/colors';
-import type { NotificationRow } from '@/types/api';
-import { ErrorScreen } from '@/components/ui/ErrorScreen';
-import { LoadingScreen } from '@/components/ui/LoadingScreen';
+import type { AssignmentSummary, SubmissionRow } from '@/types/api';
 
-const TYPE_ICONS: Record<string, string> = {
-  teacher_completed_review:      '✅',
-  teacher_requested_resubmission:'🔁',
-  voice_note_added:              '🎙',
-  student_submitted_attempt:     '📩',
-  admin_assigned_teacher:        '👤',
-  student_assigned_to_teacher:   '👤',
-  attempt_comment_added:         '💬',
-};
+// ── Card components ──────────────────────────────────────────────────────────
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins  = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days  = Math.floor(diff / 86400000);
-  if (mins < 1)   return 'Just now';
-  if (mins < 60)  return `${mins}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7)   return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
-function NotificationItem({
-  item,
-  onPress,
-}: {
-  item: NotificationRow;
-  onPress: () => void;
-}) {
-  const icon = TYPE_ICONS[item.type] ?? '🔔';
-  const isUnread = !item.readAt;
-
+function PageLabel({ assignment }: { assignment: AssignmentSummary }) {
   return (
-    <TouchableOpacity
-      style={[styles.item, isUnread && styles.itemUnread]}
-      onPress={onPress}
-      activeOpacity={isUnread ? 0.7 : 1}
-    >
-      <View style={[styles.iconWrap, isUnread && styles.iconWrapUnread]}>
-        <Text style={styles.icon}>{icon}</Text>
-      </View>
-      <View style={styles.itemContent}>
-        <Text style={[styles.itemTitle, isUnread && styles.itemTitleUnread]}>
-          {item.title}
-        </Text>
-        {item.body ? (
-          <Text style={styles.itemBody} numberOfLines={2}>{item.body}</Text>
-        ) : null}
-        <Text style={styles.itemTime}>{relativeTime(item.createdAt)}</Text>
-      </View>
-      {isUnread && <View style={styles.dot} />}
-    </TouchableOpacity>
+    <Text style={styles.cardPage}>
+      {assignment.surahNameEnglish
+        ? `${assignment.surahNameEnglish} · Page ${assignment.pageNumber}`
+        : `Page ${assignment.pageNumber}`}
+    </Text>
   );
 }
 
-export default function NotificationsScreen() {
-  const [items, setItems]           = useState<NotificationRow[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading]       = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError]           = useState<string | null>(null);
+function RerecordCard({
+  assignment,
+  onPress,
+}: {
+  assignment: AssignmentSummary;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={[styles.cardAccent, { backgroundColor: C.red }]} />
+      <View style={styles.cardBody}>
+        <Text style={[styles.cardStatus, { color: C.red }]}>Practice needed</Text>
+        <PageLabel assignment={assignment} />
+        <Text style={styles.cardHint}>Your teacher asked you to re-record this page.</Text>
+      </View>
+      <TouchableOpacity style={[styles.cardBtn, styles.cardBtnRed]} onPress={onPress} activeOpacity={0.8}>
+        <Text style={styles.cardBtnText}>Re-record</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function FeedbackCard({
+  assignment,
+  onPress,
+}: {
+  assignment: AssignmentSummary;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={[styles.cardAccent, { backgroundColor: C.purple }]} />
+      <View style={styles.cardBody}>
+        <Text style={[styles.cardStatus, { color: C.purple }]}>Feedback ready</Text>
+        <PageLabel assignment={assignment} />
+        <Text style={styles.cardHint}>Your teacher has left annotations on your recitation.</Text>
+      </View>
+      <TouchableOpacity style={[styles.cardBtn, styles.cardBtnPurple]} onPress={onPress} activeOpacity={0.8}>
+        <Text style={styles.cardBtnText}>View</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Main screen ──────────────────────────────────────────────────────────────
+
+export default function FocusScreen() {
+  const router = useRouter();
+  const [assignments, setAssignments] = useState<AssignmentSummary[]>([]);
+  const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [refreshing, setRefreshing]   = useState(false);
+  const [completedOpen, setCompletedOpen] = useState(false);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
-    setError(null);
+    else setRefreshing(true);
     try {
-      const result = await getNotifications({ limit: 50 });
-      setItems(result.items);
-      setUnreadCount(result.unreadCount);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load notifications');
-    } finally {
+      const [asgns, subs] = await Promise.all([
+        getStudentAssignments(),
+        getStudentSubmissions(),
+      ]);
+      setAssignments(asgns);
+      setSubmissions(subs);
+    } catch { /* silent — stale data is fine */ }
+    finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Reload when tab comes into focus so badge stays in sync
-  useFocusEffect(useCallback(() => { load(true); }, [load]));
+  const subByAssignment = useMemo(() => {
+    const map = new Map<string, SubmissionRow>();
+    for (const s of submissions) map.set(s.assignmentId, s);
+    return map;
+  }, [submissions]);
 
-  const handleMarkRead = async (id: string) => {
-    try {
-      await markNotificationRead(id);
-      const now = new Date().toISOString();
-      setItems((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: now } : n)));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch { /* best-effort */ }
+  const needsRerecord = useMemo(
+    () => assignments.filter((a) => a.status === 'needs_resubmission'),
+    [assignments],
+  );
+  const feedbackReady = useMemo(
+    () => assignments.filter((a) => a.status === 'reviewed'),
+    [assignments],
+  );
+  const recentlyCompleted = useMemo(
+    () =>
+      assignments
+        .filter((a) => a.status === 'completed')
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 8),
+    [assignments],
+  );
+
+  const actionCount = needsRerecord.length + feedbackReady.length;
+
+  const handleRerecord = (assignment: AssignmentSummary) => {
+    router.push({
+      pathname: '/assignments/[id]/record',
+      params: { id: assignment.id },
+    });
   };
 
-  const handleMarkAllRead = async () => {
-    try {
-      await markAllNotificationsRead();
-      const now = new Date().toISOString();
-      setItems((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? now })));
-      setUnreadCount(0);
-    } catch { /* best-effort */ }
+  const handleViewFeedback = (assignment: AssignmentSummary) => {
+    const sub = subByAssignment.get(assignment.id);
+    if (!sub?.currentAttemptId) {
+      router.push(`/assignments/${assignment.id}` as '/');
+      return;
+    }
+    router.push({
+      pathname: '/assignments/[id]/feedback/[attemptId]',
+      params: {
+        id: assignment.id,
+        attemptId: sub.currentAttemptId,
+        submissionId: sub.id,
+        pageNumber: assignment.pageNumber?.toString() ?? '',
+      },
+    });
   };
 
-  if (loading) return <LoadingScreen message="Loading notifications…" />;
-  if (error)   return <ErrorScreen message={error} onRetry={() => load()} />;
+  if (loading) {
+    return (
+      <View style={styles.centerWrap}>
+        <Text style={styles.loadingText}>Loading…</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      {unreadCount > 0 && (
-        <View style={styles.toolbar}>
-          <Text style={styles.toolbarCount}>{unreadCount} unread</Text>
-          <TouchableOpacity onPress={handleMarkAllRead} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.markAllBtn}>Mark all read</Text>
-          </TouchableOpacity>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.blue} />
+      }
+    >
+      {/* ── Needs attention ── */}
+      <Text style={styles.sectionLabel}>NEEDS ATTENTION</Text>
+
+      {actionCount === 0 ? (
+        <View style={styles.allCaughtUp}>
+          <Text style={styles.allCaughtUpIcon}>✓</Text>
+          <Text style={styles.allCaughtUpTitle}>All caught up</Text>
+          <Text style={styles.allCaughtUpBody}>
+            Nothing to do right now. Your teacher will notify you when they review your recitation.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.cards}>
+          {needsRerecord.map((a) => (
+            <RerecordCard
+              key={a.id}
+              assignment={a}
+              onPress={() => handleRerecord(a)}
+            />
+          ))}
+          {feedbackReady.map((a) => (
+            <FeedbackCard
+              key={a.id}
+              assignment={a}
+              onPress={() => handleViewFeedback(a)}
+            />
+          ))}
         </View>
       )}
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={C.blue} />
-        }
-        contentContainerStyle={items.length === 0 ? styles.emptyWrap : styles.list}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>All caught up</Text>
-            <Text style={styles.emptyBody}>No notifications yet.</Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <NotificationItem
-            item={item}
-            onPress={() => { if (!item.readAt) handleMarkRead(item.id); }}
-          />
-        )}
-      />
-    </View>
+
+      {/* ── Recently completed ── */}
+      {recentlyCompleted.length > 0 && (
+        <View style={styles.completedSection}>
+          <TouchableOpacity
+            style={styles.completedHeader}
+            onPress={() => setCompletedOpen((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.sectionLabel}>RECENTLY COMPLETED</Text>
+            <Text style={styles.completedChev}>{completedOpen ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {completedOpen && (
+            <View style={styles.completedList}>
+              {recentlyCompleted.map((a) => (
+                <View key={a.id} style={styles.completedRow}>
+                  <Text style={styles.completedCheck}>✓</Text>
+                  <View style={styles.completedMeta}>
+                    <Text style={styles.completedPage}>
+                      {a.surahNameEnglish
+                        ? `${a.surahNameEnglish} · Page ${a.pageNumber}`
+                        : `Page ${a.pageNumber}`}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.surface },
+  content:   { padding: 16, gap: 8, paddingBottom: 32 },
 
-  toolbar: {
+  centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { color: C.textMuted, fontSize: 14 },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+
+  // ── Action cards ──
+  cards: { gap: 10 },
+
+  card: {
+    backgroundColor: C.white,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  cardAccent: { width: 4, alignSelf: 'stretch' },
+  cardBody: { flex: 1, paddingVertical: 14, paddingHorizontal: 12, gap: 3 },
+  cardStatus: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
+  cardPage:   { fontSize: 14, fontWeight: '600', color: C.text },
+  cardHint:   { fontSize: 12, color: C.textMuted, lineHeight: 16 },
+
+  cardBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginRight: 12,
+    alignItems: 'center',
+  },
+  cardBtnRed:    { backgroundColor: C.red },
+  cardBtnPurple: { backgroundColor: C.purple },
+  cardBtnText:   { fontSize: 13, fontWeight: '700', color: C.white },
+
+  // ── All caught up ──
+  allCaughtUp: {
+    backgroundColor: C.white,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 10,
+  },
+  allCaughtUpIcon:  { fontSize: 36, color: C.green },
+  allCaughtUpTitle: { fontSize: 18, fontWeight: '700', color: C.text },
+  allCaughtUpBody:  {
+    fontSize: 14,
+    color: C.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // ── Recently completed ──
+  completedSection: { marginTop: 16 },
+  completedHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: C.white,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
+    marginBottom: 8,
   },
-  toolbarCount: { fontSize: 13, color: C.textMuted, fontWeight: '500' },
-  markAllBtn:   { fontSize: 13, color: C.blue, fontWeight: '700' },
-
-  list:     { paddingVertical: 8 },
-  emptyWrap:{ flex: 1 },
-  separator:{ height: StyleSheet.hairlineWidth, backgroundColor: C.divider, marginLeft: 66 },
-
-  item: {
+  completedChev: { fontSize: 11, color: C.textMuted },
+  completedList: {
+    backgroundColor: C.white,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  completedRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: C.white,
-    gap: 12,
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.border,
   },
-  itemUnread: { backgroundColor: C.blueBg },
-
-  iconWrap: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: C.grayBg,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  iconWrapUnread: { backgroundColor: '#DBEAFE' },
-  icon: { fontSize: 18 },
-
-  itemContent: { flex: 1, gap: 2 },
-  itemTitle:   { fontSize: 14, fontWeight: '600', color: C.text, lineHeight: 20 },
-  itemTitleUnread: { color: C.blue },
-  itemBody:    { fontSize: 13, color: C.textMuted, lineHeight: 18 },
-  itemTime:    { fontSize: 11, color: C.grayLight, marginTop: 2 },
-
-  dot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: C.blue,
-    marginTop: 6, flexShrink: 0,
-  },
-
-  empty:      { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 6 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.text },
-  emptyBody:  { fontSize: 14, color: C.textMuted },
+  completedCheck: { fontSize: 14, color: C.green, fontWeight: '700' },
+  completedMeta:  { flex: 1 },
+  completedPage:  { fontSize: 14, color: C.text },
 });

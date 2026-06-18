@@ -145,6 +145,8 @@ export default function QuranPageScreen() {
       params: {
         id: reviewedSubmission.assignmentId,
         attemptId: reviewedSubmission.currentAttemptId!,
+        submissionId: reviewedSubmission.id,
+        pageNumber: pageNumber.toString(),
       },
     });
   }, [reviewedSubmission, router]);
@@ -188,7 +190,7 @@ export default function QuranPageScreen() {
         onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
       >
         <TouchableOpacity
-          style={[styles.reciteBtn, submitting && styles.btnDisabled]}
+          style={[styles.reciteBtn, submitting && styles.btnDisabled, !hasFeedback && styles.reciteBtnFull]}
           onPress={handleRecite}
           disabled={submitting}
           activeOpacity={0.82}
@@ -203,16 +205,16 @@ export default function QuranPageScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.feedbackBtn, hasFeedback && styles.feedbackBtnActive]}
-          onPress={handleFeedback}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.feedbackIcon}>📋</Text>
-          <Text style={[styles.feedbackLabel, hasFeedback && styles.feedbackLabelActive]}>
-            Feedback
-          </Text>
-        </TouchableOpacity>
+        {hasFeedback && (
+          <TouchableOpacity
+            style={styles.feedbackBtnActive}
+            onPress={handleFeedback}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.feedbackIcon}>📋</Text>
+            <Text style={styles.feedbackLabelActive}>Feedback</Text>
+          </TouchableOpacity>
+        )}
       </Animated.View>
     </View>
   );
@@ -257,11 +259,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
   },
-  btnDisabled:  { opacity: 0.55 },
-  reciteIcon:   { fontSize: 18 },
-  reciteLabel:  { fontSize: 16, fontWeight: '700', color: C.white },
+  reciteBtnFull: { flex: 1 },
+  btnDisabled:   { opacity: 0.55 },
+  reciteIcon:    { fontSize: 18 },
+  reciteLabel:   { fontSize: 16, fontWeight: '700', color: C.white },
 
-  feedbackBtn: {
+  feedbackBtnActive: {
     flex: 2,
     flexDirection: 'row',
     alignItems: 'center',
@@ -271,10 +274,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
     borderWidth: 1.5,
-    borderColor: C.border,
+    borderColor: C.blue,
   },
-  feedbackBtnActive:   { borderColor: C.blue },
   feedbackIcon:        { fontSize: 16 },
-  feedbackLabel:       { fontSize: 14, fontWeight: '600', color: C.textMuted },
-  feedbackLabelActive: { color: C.blue },
+  feedbackLabelActive: { fontSize: 14, fontWeight: '600', color: C.blue },
 });

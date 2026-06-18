@@ -132,22 +132,24 @@ export class AnnotationService {
   ): Promise<PaginatedResult<AnnotationRow>> {
     await this.resolveAccess(submissionId, attemptId, requestingUserId, userRole);
 
+    const ANNOTATION_SELECT = `
+      id, submission_id, submission_attempt_id, teacher_id, quran_page_id,
+      annotation_type, anchor_type,
+      points, visual_bounds, point_count, is_simplified, style,
+      verse_key, word_id, word_position, line_number,
+      mistake_type, mistake_option_id, quick_label,
+      note_text, recording_timestamp_ms,
+      created_at, updated_at,
+      annotation_voice_notes(id),
+      mistake_options!mistake_option_id(
+        id, code, label, category_id,
+        mistake_categories!category_id(id, code, label)
+      )
+    `;
+
     let query = supabaseAdmin
       .from('annotations')
-      .select(`
-        id, submission_id, submission_attempt_id, teacher_id, quran_page_id,
-        annotation_type, anchor_type,
-        points, visual_bounds, point_count, is_simplified, style,
-        verse_key, word_id, word_position, line_number,
-        mistake_type, mistake_option_id, quick_label,
-        note_text, recording_timestamp_ms,
-        created_at, updated_at,
-        annotation_voice_notes(id),
-        mistake_options!mistake_option_id(
-          id, code, label, category_id,
-          mistake_categories!category_id(id, code, label)
-        )
-      `)
+      .select(ANNOTATION_SELECT)
       .eq('submission_attempt_id', attemptId)
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
@@ -160,7 +162,33 @@ export class AnnotationService {
     const { data, error } = await query;
     if (error) throw new AppError(500, 'Failed to fetch annotations');
 
-    const rows = (data ?? []) as Record<string, unknown>[];
+    let rows = (data ?? []) as Record<string, unknown>[];
+
+    // Students viewing feedback: if the current attempt has no annotations, fall back
+    // to the most recently annotated attempt for this submission so they always see
+    // the teacher's marks even after re-recording.
+    if (rows.length === 0 && userRole === 'student' && !pagination.cursor) {
+      const { data: fallback } = await supabaseAdmin
+        .from('annotations')
+        .select(ANNOTATION_SELECT)
+        .eq('submission_id', submissionId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (fallback && fallback.length > 0) {
+        const fallbackAttemptId = (fallback[0] as Record<string, unknown>).submission_attempt_id as string;
+        const { data: fallbackAll } = await supabaseAdmin
+          .from('annotations')
+          .select(ANNOTATION_SELECT)
+          .eq('submission_attempt_id', fallbackAttemptId)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: true })
+          .limit(pagination.limit + 1);
+        rows = (fallbackAll ?? []) as Record<string, unknown>[];
+      }
+    }
+
     const hasMore = rows.length > pagination.limit;
     const page = hasMore ? rows.slice(0, pagination.limit) : rows;
 

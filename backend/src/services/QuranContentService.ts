@@ -339,7 +339,9 @@ export class QuranContentService {
   // and by GET /api/quran/pages/:pageNumber on the mobile-facing route.
   async getPage(pageNumber: number): Promise<QuranPageSummary> {
     const surahName = surahNameForPage(pageNumber);
-    const SELECT = 'id, page_number, mushaf_id, storage_path, image_url, width, height, primary_surah_name_english';
+    // primary_surah_name_english only exists after migration 011 is applied — omit from SELECT
+    // and always use the static surahNameForPage() fallback instead.
+    const SELECT = 'id, page_number, mushaf_id, storage_path, image_url, width, height';
 
     const { data: cached } = await supabaseAdmin
       .from('quran_pages')
@@ -350,16 +352,25 @@ export class QuranContentService {
       .maybeSingle();
 
     if (cached) {
-      // Backfill the surah name if the column was null (rows created before migration 011)
-      if (!cached.primary_surah_name_english) {
-        void supabaseAdmin
-          .from('quran_pages')
-          .update({ primary_surah_name_english: surahName })
-          .eq('id', cached.id)
-          .then(() => {});
+      const needsImage = !cached.storage_path && !cached.image_url;
+
+      if (needsImage) {
+        const resolvedImageUrl = await this.fetchImageUrlOnly(pageNumber);
+        if (resolvedImageUrl) {
+          void supabaseAdmin
+            .from('quran_pages')
+            .update({ image_url: resolvedImageUrl })
+            .eq('id', cached.id)
+            .then(() => {});
+        }
+        return this.toPageSummary({ ...cached, image_url: resolvedImageUrl, primary_surah_name_english: surahName });
       }
-      return this.toPageSummary({ ...cached, primary_surah_name_english: cached.primary_surah_name_english ?? surahName });
+
+      return this.toPageSummary({ ...cached, primary_surah_name_english: surahName });
     }
+
+    // New row — fetch the image URL from Quran Foundation synchronously
+    const imageUrl = await this.fetchImageUrlOnly(pageNumber);
 
     const { data: created, error } = await supabaseAdmin
       .from('quran_pages')
@@ -368,13 +379,26 @@ export class QuranContentService {
         provider_mushaf_id: this.mushafId,
         mushaf_id: 'qcf_v2',
         page_number: pageNumber,
-        primary_surah_name_english: surahName,
+        ...(imageUrl ? { image_url: imageUrl } : {}),
       })
       .select(SELECT)
       .single();
 
     if (error) throw new AppError(500, `Failed to cache Quran page ${pageNumber}`);
-    return this.toPageSummary(created);
+    return this.toPageSummary({ ...created, primary_surah_name_english: surahName });
+  }
+
+  private async fetchImageUrlOnly(pageNumber: number): Promise<string | null> {
+    try {
+      const data = await this.api.get<RawVersesByPageResponse>(`/verses/by_page/${pageNumber}`, {
+        mushaf: this.mushafId,
+        fields: 'image_url',
+        per_page: 1,
+      });
+      return this.normalizeImageUrl(data.verses?.[0]?.image_url ?? null);
+    } catch {
+      return null;
+    }
   }
 
   // Cache-first. Falls back to Quran.Foundation API on miss.

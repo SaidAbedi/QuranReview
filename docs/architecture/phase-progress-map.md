@@ -1,7 +1,7 @@
 # Phase Progress Map
 
 Tracks actual implementation status across backend, mobile, and remaining work.
-Last updated: 2026-06-06 (Phase 16 complete)
+Last updated: 2026-06-18 (Phase 24 complete)
 
 > **Rule:** Update this file every time a phase is completed — mark it ✅ in the Phase Status table, update the Mobile Screen Map, and move it out of the Remaining Phases section.
 
@@ -36,11 +36,14 @@ Last updated: 2026-06-06 (Phase 16 complete)
 | 14    | Teacher mobile flow — queue, review, annotations     | ✅     |
 | 15    | Admin mobile flow — assign queue, relationships      | ✅     |
 | 16    | Student feedback viewer — see teacher annotations    | ✅     |
-| 17    | Progress drill-down — surah & juz page-by-page       | ⬜     |
-| 18    | Attempt history on assignment detail                 | ⬜     |
-| 19    | Teacher student roster + student history             | ⬜     |
-| 20    | Push notifications — Expo token registration         | ⬜     |
-| 21    | Tap-to-word annotation (teacher review screen)       | ⬜     |
+| 17    | Progress drill-down — surah & juz page-by-page       | ✅     |
+| 18    | Attempt history on assignment detail                 | ✅     |
+| 19    | Teacher hub — queue polish, student roster, history  | ✅     |
+| 20    | Notifications — unread badge, mark read, push tokens | ✅     |
+| 21    | Quran Mus'haf browser + self-paced recording flow    | ✅     |
+| 22    | Annotation UX overhaul — zoom/pan, mode separation, auto-save, details sheet | ✅ |
+| 23    | Review voice notes — teacher wrap-up audio per attempt | ✅   |
+| 24    | Student UX polish — merged tabs, Recitation Room, image & annotation fixes | ✅ |
 
 ---
 
@@ -143,28 +146,33 @@ Last updated: 2026-06-06 (Phase 16 complete)
 
 ### Student (tabs)
 
-| Screen                  | Status | Notes                                              |
-| ----------------------- | ------ | -------------------------------------------------- |
-| Login / Register        | ✅     |                                                    |
-| Pending assignment      | ✅     | Shown until admin assigns a teacher                |
-| Assignments list        | ✅     | Status badges, relative dates                      |
-| Assignment detail       | ✅     | Page image (real 1300×2103 PNG), record button     |
-| Record & upload audio   | ✅     | expo-audio, signed URL upload                      |
-| Progress overview       | ✅     | Overall % bar + assigned/completed/revision stats  |
-| Notifications inbox     | ✅     | Unread highlight, mark read, mark all read         |
-| **Annotation viewer**   | ✅     | View Feedback button → read-only canvas + callout list |
-| **Surah/Juz drill-down**| 🔵     | Progress screen has no tappable breakdown          |
-| **Attempt history**     | 🔵     | Only current attempt shown on assignment detail    |
+| Screen                        | Status | Notes                                                                 |
+| ----------------------------- | ------ | --------------------------------------------------------------------- |
+| Login / Register              | ✅     |                                                                       |
+| Pending assignment            | ✅     | Shown until admin assigns a teacher                                   |
+| Assignments tab               | ✅     | Merged with Focus: NEEDS ATTENTION action cards + ALL ASSIGNMENTS list; tab badge counts actionable items |
+| Assignment detail             | ✅     | Page image (real 1300×2103 PNG), record button, attempt history       |
+| Recitation Room               | ✅     | Immersive dark UI; auto-countdown; pulse rings; waveform bars; review before submit |
+| Quran browser                 | ✅     | 604-page scroll; My Pages strip shows assignment status dots per page |
+| Quran page view               | ✅     | Full-width Mus'haf image; Recite + Feedback buttons (feedback shown only when teacher reviewed) |
+| Student feedback viewer       | ✅     | Read-only annotation canvas; tap dot → detail popup; voice notes; fallback to most-recently-annotated attempt |
+| Progress overview             | ✅     | Overall % bar + stats; surah & juz drill-down cards                   |
+| Surah / Juz drill-down        | ✅     | Page-by-page status dots tappable to page view                        |
+| Attempt history               | ✅     | Past attempts listed on assignment detail; tap to view attempt feedback |
+| Notifications inbox           | ✅     | Unread highlight, mark read, mark all read                            |
 
 ### Teacher
 
-| Screen                      | Status | Notes                                             |
-| --------------------------- | ------ | ------------------------------------------------- |
-| Review queue                | ✅     | Pending submissions with attempt # and page info  |
-| Review screen               | ✅     | Page image + freehand canvas + audio playback     |
-| Mark complete / resubmit    | ✅     | Triggers notification to student                  |
-| **Student list**            | 🔵     | No screen to see all assigned students or history |
-| **Tap-to-word annotation**  | 🔵     | Glyph bounds uploaded; UI not built yet           |
+| Screen                      | Status | Notes                                                          |
+| --------------------------- | ------ | -------------------------------------------------------------- |
+| Review queue                | ✅     | Pending submissions with attempt # and page info               |
+| Review screen               | ✅     | Page image + freehand canvas (zoom/pan) + audio playback + annotation toolbar |
+| Annotation modes            | ✅     | Freehand draw; mistake label picker; text note; voice note per mark |
+| Mark complete / resubmit    | ✅     | Triggers notification to student; auto-saves pending annotations first |
+| Review voice note           | ✅     | Teacher leaves a wrap-up voice message per attempt             |
+| Annotation details sheet    | ✅     | Tap any saved mark → see label, note, voice note               |
+| Student list (hub)          | ✅     | All assigned students with stats; tap → submission history     |
+| Tap-to-word annotation      | ⬜     | Glyph bounds available; word-tap UI not built yet              |
 
 ### Admin
 
@@ -176,120 +184,9 @@ Last updated: 2026-06-06 (Phase 16 complete)
 
 ---
 
-## Remaining Phases — Detail
+## Remaining Work
 
-### Phase 16 — Student Feedback Viewer ⬜
-**Goal:** Close the core feedback loop — students can see teacher annotations on their attempt.
-
-**Mobile files to create:**
-- `mobile/app/assignments/[id]/feedback/[attemptId].tsx` — main viewer screen
-- `mobile/src/api/annotations.ts` — API calls for annotations + markers
-
-**Mobile files to modify:**
-- `mobile/app/assignments/[id]/index.tsx` — add "View Feedback" button when status = `reviewed | completed | needs_resubmission`
-
-**What the screen does:**
-- Renders the Quran page image at full width (same as teacher review)
-- Fetches paginated annotations via `GET /api/submissions/:id/attempts/:attemptId/annotations`
-- Overlays each annotation stroke using normalized coordinates (0–1 → canvas pixels)
-- Shows mistake labels and note text as callouts on the canvas
-- Lists voice notes below the canvas; tapping fetches a signed URL and plays back audio
-- Read-only — no drawing tools
-
-**Endpoints used (all exist):**
-- `GET /api/submissions/:id/attempts/:attemptId/annotations`
-- `GET /api/submissions/:id/attempts/:attemptId/annotation-markers`
-- `POST /api/media/signed-read-url` (for voice note playback)
-- `GET /api/quran/pages/:pageNumber` (page image + dimensions)
-
----
-
-### Phase 17 — Progress Drill-Down ⬜
-**Goal:** Students can tap into any surah or juz to see page-by-page status.
-
-**Mobile files to create:**
-- `mobile/app/(tabs)/progress/surah/[surahNumber].tsx`
-- `mobile/app/(tabs)/progress/juz/[juzNumber].tsx`
-- `mobile/src/api/progress.ts` — add `getSurahProgress()` and `getJuzProgress()`
-
-**Mobile files to modify:**
-- `mobile/app/(tabs)/progress.tsx` — add surah/juz breakdown section with tappable cards (use snapshot data from existing `/api/student/progress` response)
-
-**What changes:**
-- Progress screen gets two collapsible sections: "By Surah" and "By Juz"
-- Each card shows surah/juz name, pages completed / total, a mini progress bar
-- Tapping navigates to the detail screen showing every page as a status dot (not started / submitted / needs revision / completed)
-
-**Endpoints used (all exist):**
-- `GET /api/student/progress` (already called — `surahBreakdown` and `juzBreakdown` fields)
-- `GET /api/student/progress/surahs/:n`
-- `GET /api/student/progress/juz/:n`
-
----
-
-### Phase 18 — Attempt History ⬜
-**Goal:** Students can see all past attempts for an assignment, not just the current one.
-
-**Mobile files to modify:**
-- `mobile/app/assignments/[id]/index.tsx` — add attempt history list below current attempt card
-
-**What changes:**
-- After the current attempt status card, show a "Previous Attempts" section
-- Each row: "Attempt #N · date · status badge"
-- Tapping a completed/reviewed attempt navigates to the Phase 16 feedback viewer for that specific attempt
-- Calls `GET /api/submissions/:submissionId/attempts` (already exists)
-
----
-
-### Phase 19 — Teacher Student Roster ⬜
-**Goal:** Teachers can see all their assigned students and each student's submission history.
-
-**Backend files to create/modify:**
-- `backend/src/routes/assignments.ts` — add `GET /api/teacher/students`
-- `backend/src/services/AssignmentService.ts` — add `getTeacherStudents()` method
-
-**What the new endpoint returns:**
-```typescript
-// GET /api/teacher/students
-[{
-  studentId, displayName, email,
-  pagesAssigned, pagesCompleted,      // from student_page_progress
-  lastSubmittedAt,                    // most recent submission.submitted_at
-  activeAssignmentCount,
-}]
-```
-
-**Mobile files to create:**
-- `mobile/app/(teacher)/students.tsx` — roster list screen
-- `mobile/app/(teacher)/students/[studentId].tsx` — student detail: their assignments + submission statuses
-
-**Mobile files to modify:**
-- `mobile/app/(teacher)/_layout.tsx` — add "Students" header button (alongside Sign Out)
-
----
-
-### Phase 20 — Push Notifications ⬜
-**Goal:** Teachers get a lock-screen notification when a student submits; students get notified when teacher reviews.
-
-**Mobile files to modify:**
-- `mobile/app/_layout.tsx` — on post-login, request push permissions and call `POST /api/devices/register`
-- `mobile/src/api/notifications.ts` — add `registerDevice(token)` call
-
-**Backend — already done:**
-- `POST /api/devices/register` route exists
-- `NotificationService.sendPushNotification()` exists
-- DB table `push_device_tokens` exists
-
-**What's needed:**
-- Import `expo-notifications`, call `getExpoPushTokenAsync()` after login
-- Pass token to `POST /api/devices/register`
-- Backend `createNotification()` already calls `sendPushNotification()` — tokens just need to be in the DB
-
-**Note:** Push only works on physical devices, not simulators. Test on a real device.
-
----
-
-### Phase 21 — Tap-to-Word Annotation ⬜
+### Next up — Tap-to-Word Annotation
 **Goal:** Teachers can tap a specific Arabic word on the page to attach a mistake label, instead of only drawing freehand.
 
 **Mobile files to modify:**
@@ -297,7 +194,7 @@ Last updated: 2026-06-06 (Phase 16 complete)
 
 **What changes:**
 - Add a "Word" mode button to the annotation toolbar (alongside existing freehand/text modes)
-- On mount: fetch `quran-page-images/mushaf-madani/glyph-bounds.json` from public URL, filter to current page
+- On mount: fetch glyph bounds for the current page from Supabase public bucket
 - Scale normalized word bounds (0–1) to canvas pixel coordinates
 - In word mode: on tap, find the closest bounding box within a tolerance radius
 - Show a bottom sheet: mistake category picker → mistake option picker → optional text note
@@ -306,7 +203,13 @@ Last updated: 2026-06-06 (Phase 16 complete)
 **Endpoints used (all exist):**
 - `POST /api/submissions/:id/attempts/:attemptId/annotations`
 - `GET /api/mistake-categories`
-- Glyph bounds JSON from public Supabase storage URL
+
+---
+
+### Remaining — Push Notifications (physical device only)
+- Import `expo-notifications`, call `getExpoPushTokenAsync()` after login
+- Pass token to `POST /api/devices/register` (backend already implemented)
+- Push only works on physical devices — confirm on a real device before shipping
 
 ---
 
@@ -332,3 +235,15 @@ quran-page-images/mushaf-madani/glyph-bounds.json    (public bucket, 88k words)
 - `supabaseAdmin` (service role JWT) — all backend DB operations; bypasses RLS
 - `pg` Pool (DATABASE_URL) — removed; no longer required
 - Mobile app — Supabase Auth only (JWT issuance/refresh); all data through Express backend
+
+### Phase 24 decisions
+
+| Decision | Reason |
+| -------- | ------ |
+| Merged Assignments + Focus tab into one screen | Two separate tabs showed the same data from different angles; single screen with NEEDS ATTENTION action cards at top removes duplication without losing either UX pattern |
+| `useActionCount` hook drives tab badge | Shares assignment fetch logic; responds to `AppState` changes so badge updates when app returns to foreground without a separate polling loop |
+| `getAnnotations` falls back to most-recently-annotated attempt for students | After a teacher annotates attempt N and marks needs-resubmission, the student re-records and `current_attempt_id` advances to N+1. N+1 has no annotations yet; the student would see a blank canvas. Fallback returns the last attempt that has marks so feedback is always visible. Teachers are not affected (no fallback for role=teacher) |
+| Quran page images fetched lazily via `fetchImageUrlOnly()` | `getPage()` creates minimal DB rows on first visit; if the row has no `image_url`, it calls the QF API for just `fields=image_url&per_page=1` — lightweight. Result cached in DB on background update |
+| `primary_surah_name_english` column (migration 011) backfilled via JS | DDL applied by user in SQL Editor (Supavisor pooler unsupported for this project). Column then backfilled for all 604 rows via static `SURAH_PAGE_STARTS` array in Node script — no Quran.Foundation API calls needed |
+| `review_voice_notes` table (migration 009) applied | Enables teacher review-level voice note per attempt (separate from per-annotation voice notes in `annotation_voice_notes`) |
+| Recitation Room auto-starts countdown on mount | Student sets phone down before beginning; countdown (3–2–1) gives them time to compose themselves. Uses `Animated.spring` + `Animated.timing` per tick; waveform bars and pulse rings use `Animated.loop` with staggered delays |

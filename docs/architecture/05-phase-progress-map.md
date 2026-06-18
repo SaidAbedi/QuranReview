@@ -16,8 +16,19 @@
 | 9 | Notifications (DB-first, push best-effort) | ✅ Complete |
 | 10 | Admin assignment management | ✅ Complete |
 | 11 | Mistake feedback (structured mistake_type + options) | ✅ Complete |
-| 12 | React Native mobile app (Expo Dev Client) | ⬜ |
-| 13 | Polish, E2E testing, launch prep | ⬜ |
+| 12 | Mobile foundation — Expo Dev Client, auth, routing | ✅ Complete |
+| 13 | Student mobile flow | ✅ Complete |
+| 14 | Teacher mobile flow — queue, review, annotations | ✅ Complete |
+| 15 | Admin mobile flow — assign queue, relationships | ✅ Complete |
+| 16 | Student feedback viewer — read-only annotation canvas | ✅ Complete |
+| 17 | Progress drill-down — surah & juz page-by-page | ✅ Complete |
+| 18 | Attempt history on assignment detail | ✅ Complete |
+| 19 | Teacher hub — student roster + submission history | ✅ Complete |
+| 20 | Notifications — unread badge, push token registration | ✅ Complete |
+| 21 | Quran Mus'haf browser + self-paced recording flow | ✅ Complete |
+| 22 | Annotation UX — zoom/pan, mode separation, auto-save | ✅ Complete |
+| 23 | Review voice notes — teacher wrap-up audio per attempt | ✅ Complete |
+| 24 | Student UX polish — merged tabs, Recitation Room, image & annotation fixes | ✅ Complete |
 
 ## Route Implementation Map
 

@@ -83,9 +83,30 @@ node -v   # must be v22.x.x
 
 If it shows v18, run `nvm use 22` and restart. Do **not** add a `ws` workaround — the correct fix is using Node 22, which ships native WebSocket.
 
+## Test accounts
+
+All test accounts use password **`test1234`**.
+
+| Email | Role | Notes |
+|-------|------|-------|
+| teacher@test.com | teacher | Assigned to all seed students |
+| test@test.com | student | Original test account; has a completed submission with annotations |
+| ali@test.com | student | Seeded; has submitted assignments |
+| sara@test.com | student | Seeded; has submitted assignments |
+| omar@test.com | student | Seeded; has submitted assignments |
+
+To create the three seed students from scratch (skips if already exists):
+
+```bash
+cd backend
+node scripts/seed-students.mjs
+```
+
+The script creates Supabase Auth users, inserts `users` rows, creates `student_assignment_requests`, `teacher_student_relationships`, assignments, submissions, and attempts — all assigned to `teacher@test.com`.
+
 ## Database migrations
 
-Migrations live in `database/migrations/` and are numbered sequentially. Apply them in order via the Supabase SQL Editor, or use the migration runner:
+Migrations live in `database/migrations/` and are numbered sequentially. Apply them in order via the Supabase SQL Editor (DDL requires a direct Postgres connection — the Supabase pooler URL does not support DDL for projects on the legacy plan):
 
 ```bash
 cd backend
@@ -93,6 +114,21 @@ node scripts/run-migration.js ../database/migrations/006_enable_rls_and_policies
 ```
 
 The runner reads `DATABASE_URL` from `backend/.env`.
+
+### Applied migrations
+
+| File | What it does |
+|------|-------------|
+| 001_initial_schema.sql | Core tables: users, assignments, submissions, attempts, annotations, progress |
+| 002_seed_data.sql | Mistake categories and options |
+| 003_add_constraints.sql | CHECK constraints, composite FKs |
+| 004_nullable_points.sql | Makes `annotations.points` nullable for word/note anchor types |
+| 005_annotation_voice_note_unique.sql | Partial unique index on `annotation_voice_notes` |
+| 006_enable_rls_and_policies.sql | RLS enabled on all 23 tables (zero policies — service role only) |
+| 007_notification_types.sql | Extends `notifications.type` CHECK for relationship events |
+| 008_student_assignment_request.sql | `student_assignment_requests` table for pending signup queue |
+| 009_review_voice_notes.sql | `review_voice_notes` table for teacher wrap-up audio per attempt |
+| 011_surah_names.sql | Adds `primary_surah_name_english` column to `quran_pages` |
 
 ## Security rules (never violate)
 

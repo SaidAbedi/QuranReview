@@ -162,8 +162,8 @@ export const darkColors = {
   warningBg: palette.gold[900],
   error:     palette.error[400],
   errorBg:   '#3A1512',
-  info:      '#70A4FF',
-  infoBg:    '#102546',
+  info:      '#4EC9A8',
+  infoBg:    '#0C3128',
 
   // Shadows
   shadow:       'rgba(0,0,0,0.32)',
@@ -199,7 +199,7 @@ export const statusChips = {
     needs_resubmission:{ bg: '#3A1512', text: '#FF6B6B', label: 'Needs Practice' },
     completed:         { bg: '#11391E', text: '#4ADE80', label: 'Completed' },
     draft:             { bg: '#252421', text: '#9C958C', label: 'Draft' },
-    reviewed:          { bg: '#102546', text: '#70A4FF', label: 'Reviewed' },
+    reviewed:          { bg: '#0C3128', text: '#4EC9A8', label: 'Reviewed' },
     assigned:          { bg: '#252421', text: '#9C958C', label: 'Assigned' },
   },
 } as const;

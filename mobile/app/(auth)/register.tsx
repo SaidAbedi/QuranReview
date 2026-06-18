@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -64,8 +65,12 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={[styles.title, { color: T.brandPrimary }]}>Create account</Text>
-          <Text style={[styles.subtitle, { color: T.textMuted }]}>Join QuranReview</Text>
+          <Image
+            source={require('../../assets/logo-dark.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.subtitle, { color: T.textMuted }]}>Create your account</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: T.surface, borderColor: T.border }]}>
@@ -127,8 +132,8 @@ const styles = StyleSheet.create({
   flex:      { flex: 1 },
   container: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   header:    { alignItems: 'center', marginBottom: 32 },
-  title:     { fontSize: 32, fontWeight: '700' },
-  subtitle:  { fontSize: 16, marginTop: 6 },
+  logo:      { width: 220, height: 220 },
+  subtitle:  { fontSize: 15, marginTop: 4 },
   card: {
     borderRadius: 20,
     borderWidth: 1,

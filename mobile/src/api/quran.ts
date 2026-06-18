@@ -10,3 +10,23 @@ export const getQuranPage = async (pageNumber: number): Promise<QuranPageSummary
     height: data.height ?? null,
   };
 };
+
+export interface PageWord {
+  id: number;
+  verseKey: string;
+  position: number;       // position within verse
+  lineNumber: number;
+  positionInLine: number; // 1 = rightmost on line (Arabic RTL)
+  text: string;
+  code: string;           // QCF V2 glyph code
+}
+
+export interface PageWordBounds {
+  page: number;
+  wordCount: number;
+  words: PageWord[];
+}
+
+export const getPageWordBounds = async (pageNumber: number): Promise<PageWordBounds> => {
+  return api.get<PageWordBounds>(`/quran/pages/${pageNumber}/word-bounds`);
+};

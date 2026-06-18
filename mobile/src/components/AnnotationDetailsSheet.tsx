@@ -311,7 +311,17 @@ export default function AnnotationDetailsSheet({
         <View style={[styles.sheet, { backgroundColor: T.surface }]}>
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: T.divider }]}>
-            <Text style={[styles.title, { color: T.textPrimary }]}>Annotation Details</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.title, { color: T.textPrimary }]}>
+                {annotation?.annotationType === 'word_marker' ? 'Word Annotation' : 'Annotation Details'}
+              </Text>
+              {annotation?.annotationType === 'word_marker' && annotation.verseKey && (
+                <Text style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>
+                  {annotation.verseKey}
+                  {annotation.wordPosition != null ? ` · word ${annotation.wordPosition}` : ''}
+                </Text>
+              )}
+            </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={[styles.closeBtnText, { color: T.textMuted }]}>✕</Text>
             </TouchableOpacity>

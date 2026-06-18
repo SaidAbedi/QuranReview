@@ -46,6 +46,9 @@ interface Props {
   strokeColor?: string;
   onStrokeComplete?: (points: AnnotationPoint[]) => void;
   onAnnotationTap?: (annotation: AnnotationRow) => void;
+  // onWordTap: when provided, activates word-tap mode — taps fire this with normalized coords
+  // instead of onAnnotationTap (used for tap-to-word annotation)
+  onWordTap?: (normX: number, normY: number) => void;
   // readOnly=true → pinch/pan/tap for navigation (feedback viewer)
   readOnly?: boolean;
   // imageUrl renders the page inside the zoom transform so pinch-zoom moves both image and annotations
@@ -83,6 +86,7 @@ export default function AnnotationCanvas({
   strokeColor = '#DC2626',
   onStrokeComplete,
   onAnnotationTap,
+  onWordTap,
   readOnly = false,
   imageUrl,
 }: Props) {
@@ -150,12 +154,16 @@ export default function AnnotationCanvas({
     .maxDeltaY(8)
     .runOnJS(true)
     .onEnd((e) => {
-      if (!onAnnotationTap) return;
       const s  = sRef.current;
       const tx = txRef.current;
       const ty = tyRef.current;
       const cx = (e.x - tx - width / 2) / s + width / 2;
       const cy = (e.y - ty - height / 2) / s + height / 2;
+      if (onWordTap) {
+        onWordTap(cx / width, cy / height);
+        return;
+      }
+      if (!onAnnotationTap) return;
       const ann = findNearestAnnotation(cx, cy);
       if (ann) onAnnotationTap(ann);
     });

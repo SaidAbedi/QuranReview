@@ -172,6 +172,11 @@ export interface AnnotationRow {
   anchorType: string;
   points: AnnotationPoint[] | null;
   style: Record<string, unknown>;
+  // Word anchor fields (populated for word_marker annotations)
+  verseKey: string | null;
+  wordId: number | null;
+  wordPosition: number | null;
+  lineNumber: number | null;
   mistakeType: MistakeType | null;
   mistakeOptionId: string | null;
   quickLabel: string | null;
@@ -193,6 +198,11 @@ export interface CreateAnnotationInput {
   anchorType?: string;
   points?: AnnotationPoint[];
   style?: Record<string, unknown>;
+  // Word anchor (for word_marker annotations)
+  verseKey?: string;
+  wordId?: number;
+  wordPosition?: number;
+  lineNumber?: number;
   mistakeType?: MistakeType;
   mistakeOptionId?: string;
   quickLabel?: string;
@@ -308,12 +318,14 @@ export interface SurahSnapshotEntry {
   surahNumber: number;
   pagesCompleted: number;
   pagesAssigned: number;
+  totalPagesInSurah: number;
 }
 
 export interface JuzSnapshotEntry {
   juzNumber: number;
   pagesCompleted: number;
   pagesAssigned: number;
+  totalPagesInJuz: number;
 }
 
 export interface StudentProgressSummary {

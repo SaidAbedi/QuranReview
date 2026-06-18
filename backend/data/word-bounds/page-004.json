@@ -1,0 +1,1212 @@
+{
+  "page": 4,
+  "wordCount": 134,
+  "words": [
+    {
+      "id": 19766,
+      "verseKey": "2:17",
+      "position": 1,
+      "lineNumber": 1,
+      "text": "مَثَلُهُمْ",
+      "code": "ﱁ",
+      "positionInLine": 1
+    },
+    {
+      "id": 19767,
+      "verseKey": "2:17",
+      "position": 2,
+      "lineNumber": 1,
+      "text": "كَمَثَلِ",
+      "code": "ﱂ",
+      "positionInLine": 2
+    },
+    {
+      "id": 19768,
+      "verseKey": "2:17",
+      "position": 3,
+      "lineNumber": 1,
+      "text": "ٱلَّذِى",
+      "code": "ﱃ",
+      "positionInLine": 3
+    },
+    {
+      "id": 19769,
+      "verseKey": "2:17",
+      "position": 4,
+      "lineNumber": 1,
+      "text": "ٱسْتَوْقَدَ",
+      "code": "ﱄ",
+      "positionInLine": 4
+    },
+    {
+      "id": 19770,
+      "verseKey": "2:17",
+      "position": 5,
+      "lineNumber": 1,
+      "text": "نَارًۭا",
+      "code": "ﱅ",
+      "positionInLine": 5
+    },
+    {
+      "id": 19771,
+      "verseKey": "2:17",
+      "position": 6,
+      "lineNumber": 1,
+      "text": "فَلَمَّآ",
+      "code": "ﱆ",
+      "positionInLine": 6
+    },
+    {
+      "id": 19772,
+      "verseKey": "2:17",
+      "position": 7,
+      "lineNumber": 1,
+      "text": "أَضَآءَتْ",
+      "code": "ﱇ",
+      "positionInLine": 7
+    },
+    {
+      "id": 19773,
+      "verseKey": "2:17",
+      "position": 8,
+      "lineNumber": 1,
+      "text": "مَا",
+      "code": "ﱈ",
+      "positionInLine": 8
+    },
+    {
+      "id": 19774,
+      "verseKey": "2:17",
+      "position": 9,
+      "lineNumber": 1,
+      "text": "حَوْلَهُۥ",
+      "code": "ﱉ",
+      "positionInLine": 9
+    },
+    {
+      "id": 19775,
+      "verseKey": "2:17",
+      "position": 10,
+      "lineNumber": 2,
+      "text": "ذَهَبَ",
+      "code": "ﱊ",
+      "positionInLine": 1
+    },
+    {
+      "id": 19776,
+      "verseKey": "2:17",
+      "position": 11,
+      "lineNumber": 2,
+      "text": "ٱللَّهُ",
+      "code": "ﱋ",
+      "positionInLine": 2
+    },
+    {
+      "id": 19777,
+      "verseKey": "2:17",
+      "position": 12,
+      "lineNumber": 2,
+      "text": "بِنُورِهِمْ",
+      "code": "ﱌ",
+      "positionInLine": 3
+    },
+    {
+      "id": 19778,
+      "verseKey": "2:17",
+      "position": 13,
+      "lineNumber": 2,
+      "text": "وَتَرَكَهُمْ",
+      "code": "ﱍ",
+      "positionInLine": 4
+    },
+    {
+      "id": 19779,
+      "verseKey": "2:17",
+      "position": 14,
+      "lineNumber": 2,
+      "text": "فِى",
+      "code": "ﱎ",
+      "positionInLine": 5
+    },
+    {
+      "id": 19780,
+      "verseKey": "2:17",
+      "position": 15,
+      "lineNumber": 2,
+      "text": "ظُلُمَـٰتٍۢ",
+      "code": "ﱏ",
+      "positionInLine": 6
+    },
+    {
+      "id": 19781,
+      "verseKey": "2:17",
+      "position": 16,
+      "lineNumber": 2,
+      "text": "لَّا",
+      "code": "ﱐ",
+      "positionInLine": 7
+    },
+    {
+      "id": 19782,
+      "verseKey": "2:17",
+      "position": 17,
+      "lineNumber": 2,
+      "text": "يُبْصِرُونَ",
+      "code": "ﱑ",
+      "positionInLine": 8
+    },
+    {
+      "id": 20856,
+      "verseKey": "2:18",
+      "position": 1,
+      "lineNumber": 2,
+      "text": "صُمٌّۢ",
+      "code": "ﱓ",
+      "positionInLine": 9
+    },
+    {
+      "id": 20857,
+      "verseKey": "2:18",
+      "position": 2,
+      "lineNumber": 3,
+      "text": "بُكْمٌ",
+      "code": "ﱔ",
+      "positionInLine": 1
+    },
+    {
+      "id": 20858,
+      "verseKey": "2:18",
+      "position": 3,
+      "lineNumber": 3,
+      "text": "عُمْىٌۭ",
+      "code": "ﱕ",
+      "positionInLine": 2
+    },
+    {
+      "id": 20859,
+      "verseKey": "2:18",
+      "position": 4,
+      "lineNumber": 3,
+      "text": "فَهُمْ",
+      "code": "ﱖ",
+      "positionInLine": 3
+    },
+    {
+      "id": 20860,
+      "verseKey": "2:18",
+      "position": 5,
+      "lineNumber": 3,
+      "text": "لَا",
+      "code": "ﱗ",
+      "positionInLine": 4
+    },
+    {
+      "id": 20861,
+      "verseKey": "2:18",
+      "position": 6,
+      "lineNumber": 3,
+      "text": "يَرْجِعُونَ",
+      "code": "ﱘ",
+      "positionInLine": 5
+    },
+    {
+      "id": 22027,
+      "verseKey": "2:19",
+      "position": 1,
+      "lineNumber": 3,
+      "text": "أَوْ",
+      "code": "ﱚ",
+      "positionInLine": 6
+    },
+    {
+      "id": 22028,
+      "verseKey": "2:19",
+      "position": 2,
+      "lineNumber": 3,
+      "text": "كَصَيِّبٍۢ",
+      "code": "ﱛ",
+      "positionInLine": 7
+    },
+    {
+      "id": 22029,
+      "verseKey": "2:19",
+      "position": 3,
+      "lineNumber": 3,
+      "text": "مِّنَ",
+      "code": "ﱜ",
+      "positionInLine": 8
+    },
+    {
+      "id": 22030,
+      "verseKey": "2:19",
+      "position": 4,
+      "lineNumber": 3,
+      "text": "ٱلسَّمَآءِ",
+      "code": "ﱝ",
+      "positionInLine": 9
+    },
+    {
+      "id": 22031,
+      "verseKey": "2:19",
+      "position": 5,
+      "lineNumber": 3,
+      "text": "فِيهِ",
+      "code": "ﱞ",
+      "positionInLine": 10
+    },
+    {
+      "id": 22032,
+      "verseKey": "2:19",
+      "position": 6,
+      "lineNumber": 4,
+      "text": "ظُلُمَـٰتٌۭ",
+      "code": "ﱟ",
+      "positionInLine": 1
+    },
+    {
+      "id": 22033,
+      "verseKey": "2:19",
+      "position": 7,
+      "lineNumber": 4,
+      "text": "وَرَعْدٌۭ",
+      "code": "ﱠ",
+      "positionInLine": 2
+    },
+    {
+      "id": 22034,
+      "verseKey": "2:19",
+      "position": 8,
+      "lineNumber": 4,
+      "text": "وَبَرْقٌۭ",
+      "code": "ﱡ",
+      "positionInLine": 3
+    },
+    {
+      "id": 22035,
+      "verseKey": "2:19",
+      "position": 9,
+      "lineNumber": 4,
+      "text": "يَجْعَلُونَ",
+      "code": "ﱢ",
+      "positionInLine": 4
+    },
+    {
+      "id": 22036,
+      "verseKey": "2:19",
+      "position": 10,
+      "lineNumber": 4,
+      "text": "أَصَـٰبِعَهُمْ",
+      "code": "ﱣ",
+      "positionInLine": 5
+    },
+    {
+      "id": 22037,
+      "verseKey": "2:19",
+      "position": 11,
+      "lineNumber": 4,
+      "text": "فِىٓ",
+      "code": "ﱤ",
+      "positionInLine": 6
+    },
+    {
+      "id": 22038,
+      "verseKey": "2:19",
+      "position": 12,
+      "lineNumber": 4,
+      "text": "ءَاذَانِهِم",
+      "code": "ﱥ",
+      "positionInLine": 7
+    },
+    {
+      "id": 22039,
+      "verseKey": "2:19",
+      "position": 13,
+      "lineNumber": 4,
+      "text": "مِّنَ",
+      "code": "ﱦ",
+      "positionInLine": 8
+    },
+    {
+      "id": 22040,
+      "verseKey": "2:19",
+      "position": 14,
+      "lineNumber": 5,
+      "text": "ٱلصَّوَٰعِقِ",
+      "code": "ﱧ",
+      "positionInLine": 1
+    },
+    {
+      "id": 22041,
+      "verseKey": "2:19",
+      "position": 15,
+      "lineNumber": 5,
+      "text": "حَذَرَ",
+      "code": "ﱨ",
+      "positionInLine": 2
+    },
+    {
+      "id": 22042,
+      "verseKey": "2:19",
+      "position": 16,
+      "lineNumber": 5,
+      "text": "ٱلْمَوْتِ ۚ",
+      "code": "ﱩﱪ",
+      "positionInLine": 3
+    },
+    {
+      "id": 22044,
+      "verseKey": "2:19",
+      "position": 17,
+      "lineNumber": 5,
+      "text": "وَٱللَّهُ",
+      "code": "ﱫ",
+      "positionInLine": 4
+    },
+    {
+      "id": 22045,
+      "verseKey": "2:19",
+      "position": 18,
+      "lineNumber": 5,
+      "text": "مُحِيطٌۢ",
+      "code": "ﱬ",
+      "positionInLine": 5
+    },
+    {
+      "id": 22046,
+      "verseKey": "2:19",
+      "position": 19,
+      "lineNumber": 5,
+      "text": "بِٱلْكَـٰفِرِينَ",
+      "code": "ﱭ",
+      "positionInLine": 6
+    },
+    {
+      "id": 23077,
+      "verseKey": "2:20",
+      "position": 1,
+      "lineNumber": 5,
+      "text": "يَكَادُ",
+      "code": "ﱯ",
+      "positionInLine": 7
+    },
+    {
+      "id": 23078,
+      "verseKey": "2:20",
+      "position": 2,
+      "lineNumber": 5,
+      "text": "ٱلْبَرْقُ",
+      "code": "ﱰ",
+      "positionInLine": 8
+    },
+    {
+      "id": 23079,
+      "verseKey": "2:20",
+      "position": 3,
+      "lineNumber": 6,
+      "text": "يَخْطَفُ",
+      "code": "ﱱ",
+      "positionInLine": 1
+    },
+    {
+      "id": 23080,
+      "verseKey": "2:20",
+      "position": 4,
+      "lineNumber": 6,
+      "text": "أَبْصَـٰرَهُمْ ۖ",
+      "code": "ﱲﱳ",
+      "positionInLine": 2
+    },
+    {
+      "id": 23082,
+      "verseKey": "2:20",
+      "position": 5,
+      "lineNumber": 6,
+      "text": "كُلَّمَآ",
+      "code": "ﱴ",
+      "positionInLine": 3
+    },
+    {
+      "id": 23083,
+      "verseKey": "2:20",
+      "position": 6,
+      "lineNumber": 6,
+      "text": "أَضَآءَ",
+      "code": "ﱵ",
+      "positionInLine": 4
+    },
+    {
+      "id": 23084,
+      "verseKey": "2:20",
+      "position": 7,
+      "lineNumber": 6,
+      "text": "لَهُم",
+      "code": "ﱶ",
+      "positionInLine": 5
+    },
+    {
+      "id": 23085,
+      "verseKey": "2:20",
+      "position": 8,
+      "lineNumber": 6,
+      "text": "مَّشَوْا۟",
+      "code": "ﱷ",
+      "positionInLine": 6
+    },
+    {
+      "id": 23086,
+      "verseKey": "2:20",
+      "position": 9,
+      "lineNumber": 6,
+      "text": "فِيهِ",
+      "code": "ﱸ",
+      "positionInLine": 7
+    },
+    {
+      "id": 23087,
+      "verseKey": "2:20",
+      "position": 10,
+      "lineNumber": 6,
+      "text": "وَإِذَآ",
+      "code": "ﱹ",
+      "positionInLine": 8
+    },
+    {
+      "id": 23088,
+      "verseKey": "2:20",
+      "position": 11,
+      "lineNumber": 6,
+      "text": "أَظْلَمَ",
+      "code": "ﱺ",
+      "positionInLine": 9
+    },
+    {
+      "id": 23089,
+      "verseKey": "2:20",
+      "position": 12,
+      "lineNumber": 6,
+      "text": "عَلَيْهِمْ",
+      "code": "ﱻ",
+      "positionInLine": 10
+    },
+    {
+      "id": 23090,
+      "verseKey": "2:20",
+      "position": 13,
+      "lineNumber": 7,
+      "text": "قَامُوا۟ ۚ",
+      "code": "ﱼﱽ",
+      "positionInLine": 1
+    },
+    {
+      "id": 23092,
+      "verseKey": "2:20",
+      "position": 14,
+      "lineNumber": 7,
+      "text": "وَلَوْ",
+      "code": "ﱾ",
+      "positionInLine": 2
+    },
+    {
+      "id": 23093,
+      "verseKey": "2:20",
+      "position": 15,
+      "lineNumber": 7,
+      "text": "شَآءَ",
+      "code": "ﱿ",
+      "positionInLine": 3
+    },
+    {
+      "id": 23094,
+      "verseKey": "2:20",
+      "position": 16,
+      "lineNumber": 7,
+      "text": "ٱللَّهُ",
+      "code": "ﲀ",
+      "positionInLine": 4
+    },
+    {
+      "id": 23095,
+      "verseKey": "2:20",
+      "position": 17,
+      "lineNumber": 7,
+      "text": "لَذَهَبَ",
+      "code": "ﲁ",
+      "positionInLine": 5
+    },
+    {
+      "id": 23096,
+      "verseKey": "2:20",
+      "position": 18,
+      "lineNumber": 7,
+      "text": "بِسَمْعِهِمْ",
+      "code": "ﲂ",
+      "positionInLine": 6
+    },
+    {
+      "id": 23097,
+      "verseKey": "2:20",
+      "position": 19,
+      "lineNumber": 7,
+      "text": "وَأَبْصَـٰرِهِمْ ۚ",
+      "code": "ﲃﲄ",
+      "positionInLine": 7
+    },
+    {
+      "id": 23099,
+      "verseKey": "2:20",
+      "position": 20,
+      "lineNumber": 7,
+      "text": "إِنَّ",
+      "code": "ﲅ",
+      "positionInLine": 8
+    },
+    {
+      "id": 23100,
+      "verseKey": "2:20",
+      "position": 21,
+      "lineNumber": 7,
+      "text": "ٱللَّهَ",
+      "code": "ﲆ",
+      "positionInLine": 9
+    },
+    {
+      "id": 23101,
+      "verseKey": "2:20",
+      "position": 22,
+      "lineNumber": 7,
+      "text": "عَلَىٰ",
+      "code": "ﲇ",
+      "positionInLine": 10
+    },
+    {
+      "id": 23102,
+      "verseKey": "2:20",
+      "position": 23,
+      "lineNumber": 8,
+      "text": "كُلِّ",
+      "code": "ﲈ",
+      "positionInLine": 1
+    },
+    {
+      "id": 23103,
+      "verseKey": "2:20",
+      "position": 24,
+      "lineNumber": 8,
+      "text": "شَىْءٍۢ",
+      "code": "ﲉ",
+      "positionInLine": 2
+    },
+    {
+      "id": 23104,
+      "verseKey": "2:20",
+      "position": 25,
+      "lineNumber": 8,
+      "text": "قَدِيرٌۭ",
+      "code": "ﲊ",
+      "positionInLine": 3
+    },
+    {
+      "id": 24292,
+      "verseKey": "2:21",
+      "position": 1,
+      "lineNumber": 8,
+      "text": "يَـٰٓأَيُّهَا",
+      "code": "ﲌ",
+      "positionInLine": 4
+    },
+    {
+      "id": 24293,
+      "verseKey": "2:21",
+      "position": 2,
+      "lineNumber": 8,
+      "text": "ٱلنَّاسُ",
+      "code": "ﲍ",
+      "positionInLine": 5
+    },
+    {
+      "id": 24294,
+      "verseKey": "2:21",
+      "position": 3,
+      "lineNumber": 8,
+      "text": "ٱعْبُدُوا۟",
+      "code": "ﲎ",
+      "positionInLine": 6
+    },
+    {
+      "id": 24295,
+      "verseKey": "2:21",
+      "position": 4,
+      "lineNumber": 8,
+      "text": "رَبَّكُمُ",
+      "code": "ﲏ",
+      "positionInLine": 7
+    },
+    {
+      "id": 24296,
+      "verseKey": "2:21",
+      "position": 5,
+      "lineNumber": 8,
+      "text": "ٱلَّذِى",
+      "code": "ﲐ",
+      "positionInLine": 8
+    },
+    {
+      "id": 24297,
+      "verseKey": "2:21",
+      "position": 6,
+      "lineNumber": 9,
+      "text": "خَلَقَكُمْ",
+      "code": "ﲑ",
+      "positionInLine": 1
+    },
+    {
+      "id": 24298,
+      "verseKey": "2:21",
+      "position": 7,
+      "lineNumber": 9,
+      "text": "وَٱلَّذِينَ",
+      "code": "ﲒ",
+      "positionInLine": 2
+    },
+    {
+      "id": 24299,
+      "verseKey": "2:21",
+      "position": 8,
+      "lineNumber": 9,
+      "text": "مِن",
+      "code": "ﲓ",
+      "positionInLine": 3
+    },
+    {
+      "id": 24300,
+      "verseKey": "2:21",
+      "position": 9,
+      "lineNumber": 9,
+      "text": "قَبْلِكُمْ",
+      "code": "ﲔ",
+      "positionInLine": 4
+    },
+    {
+      "id": 24301,
+      "verseKey": "2:21",
+      "position": 10,
+      "lineNumber": 9,
+      "text": "لَعَلَّكُمْ",
+      "code": "ﲕ",
+      "positionInLine": 5
+    },
+    {
+      "id": 24302,
+      "verseKey": "2:21",
+      "position": 11,
+      "lineNumber": 9,
+      "text": "تَتَّقُونَ",
+      "code": "ﲖ",
+      "positionInLine": 6
+    },
+    {
+      "id": 25289,
+      "verseKey": "2:22",
+      "position": 1,
+      "lineNumber": 9,
+      "text": "ٱلَّذِى",
+      "code": "ﲘ",
+      "positionInLine": 7
+    },
+    {
+      "id": 25290,
+      "verseKey": "2:22",
+      "position": 2,
+      "lineNumber": 9,
+      "text": "جَعَلَ",
+      "code": "ﲙ",
+      "positionInLine": 8
+    },
+    {
+      "id": 25291,
+      "verseKey": "2:22",
+      "position": 3,
+      "lineNumber": 9,
+      "text": "لَكُمُ",
+      "code": "ﲚ",
+      "positionInLine": 9
+    },
+    {
+      "id": 25292,
+      "verseKey": "2:22",
+      "position": 4,
+      "lineNumber": 10,
+      "text": "ٱلْأَرْضَ",
+      "code": "ﲛ",
+      "positionInLine": 1
+    },
+    {
+      "id": 25293,
+      "verseKey": "2:22",
+      "position": 5,
+      "lineNumber": 10,
+      "text": "فِرَٰشًۭا",
+      "code": "ﲜ",
+      "positionInLine": 2
+    },
+    {
+      "id": 25294,
+      "verseKey": "2:22",
+      "position": 6,
+      "lineNumber": 10,
+      "text": "وَٱلسَّمَآءَ",
+      "code": "ﲝ",
+      "positionInLine": 3
+    },
+    {
+      "id": 25295,
+      "verseKey": "2:22",
+      "position": 7,
+      "lineNumber": 10,
+      "text": "بِنَآءًۭ",
+      "code": "ﲞ",
+      "positionInLine": 4
+    },
+    {
+      "id": 25296,
+      "verseKey": "2:22",
+      "position": 8,
+      "lineNumber": 10,
+      "text": "وَأَنزَلَ",
+      "code": "ﲟ",
+      "positionInLine": 5
+    },
+    {
+      "id": 25297,
+      "verseKey": "2:22",
+      "position": 9,
+      "lineNumber": 10,
+      "text": "مِنَ",
+      "code": "ﲠ",
+      "positionInLine": 6
+    },
+    {
+      "id": 25298,
+      "verseKey": "2:22",
+      "position": 10,
+      "lineNumber": 10,
+      "text": "ٱلسَّمَآءِ",
+      "code": "ﲡ",
+      "positionInLine": 7
+    },
+    {
+      "id": 25299,
+      "verseKey": "2:22",
+      "position": 11,
+      "lineNumber": 10,
+      "text": "مَآءًۭ",
+      "code": "ﲢ",
+      "positionInLine": 8
+    },
+    {
+      "id": 25300,
+      "verseKey": "2:22",
+      "position": 12,
+      "lineNumber": 10,
+      "text": "فَأَخْرَجَ",
+      "code": "ﲣ",
+      "positionInLine": 9
+    },
+    {
+      "id": 25301,
+      "verseKey": "2:22",
+      "position": 13,
+      "lineNumber": 11,
+      "text": "بِهِۦ",
+      "code": "ﲤ",
+      "positionInLine": 1
+    },
+    {
+      "id": 25302,
+      "verseKey": "2:22",
+      "position": 14,
+      "lineNumber": 11,
+      "text": "مِنَ",
+      "code": "ﲥ",
+      "positionInLine": 2
+    },
+    {
+      "id": 25303,
+      "verseKey": "2:22",
+      "position": 15,
+      "lineNumber": 11,
+      "text": "ٱلثَّمَرَٰتِ",
+      "code": "ﲦ",
+      "positionInLine": 3
+    },
+    {
+      "id": 25304,
+      "verseKey": "2:22",
+      "position": 16,
+      "lineNumber": 11,
+      "text": "رِزْقًۭا",
+      "code": "ﲧ",
+      "positionInLine": 4
+    },
+    {
+      "id": 25305,
+      "verseKey": "2:22",
+      "position": 17,
+      "lineNumber": 11,
+      "text": "لَّكُمْ ۖ",
+      "code": "ﲨﲩ",
+      "positionInLine": 5
+    },
+    {
+      "id": 25307,
+      "verseKey": "2:22",
+      "position": 18,
+      "lineNumber": 11,
+      "text": "فَلَا",
+      "code": "ﲪ",
+      "positionInLine": 6
+    },
+    {
+      "id": 25308,
+      "verseKey": "2:22",
+      "position": 19,
+      "lineNumber": 11,
+      "text": "تَجْعَلُوا۟",
+      "code": "ﲫ",
+      "positionInLine": 7
+    },
+    {
+      "id": 25309,
+      "verseKey": "2:22",
+      "position": 20,
+      "lineNumber": 11,
+      "text": "لِلَّهِ",
+      "code": "ﲬ",
+      "positionInLine": 8
+    },
+    {
+      "id": 25310,
+      "verseKey": "2:22",
+      "position": 21,
+      "lineNumber": 11,
+      "text": "أَندَادًۭا",
+      "code": "ﲭ",
+      "positionInLine": 9
+    },
+    {
+      "id": 25311,
+      "verseKey": "2:22",
+      "position": 22,
+      "lineNumber": 11,
+      "text": "وَأَنتُمْ",
+      "code": "ﲮ",
+      "positionInLine": 10
+    },
+    {
+      "id": 25312,
+      "verseKey": "2:22",
+      "position": 23,
+      "lineNumber": 12,
+      "text": "تَعْلَمُونَ",
+      "code": "ﲯ",
+      "positionInLine": 1
+    },
+    {
+      "id": 26426,
+      "verseKey": "2:23",
+      "position": 1,
+      "lineNumber": 12,
+      "text": "وَإِن",
+      "code": "ﲱ",
+      "positionInLine": 2
+    },
+    {
+      "id": 26427,
+      "verseKey": "2:23",
+      "position": 2,
+      "lineNumber": 12,
+      "text": "كُنتُمْ",
+      "code": "ﲲ",
+      "positionInLine": 3
+    },
+    {
+      "id": 26428,
+      "verseKey": "2:23",
+      "position": 3,
+      "lineNumber": 12,
+      "text": "فِى",
+      "code": "ﲳ",
+      "positionInLine": 4
+    },
+    {
+      "id": 26429,
+      "verseKey": "2:23",
+      "position": 4,
+      "lineNumber": 12,
+      "text": "رَيْبٍۢ",
+      "code": "ﲴ",
+      "positionInLine": 5
+    },
+    {
+      "id": 26430,
+      "verseKey": "2:23",
+      "position": 5,
+      "lineNumber": 12,
+      "text": "مِّمَّا",
+      "code": "ﲵ",
+      "positionInLine": 6
+    },
+    {
+      "id": 26431,
+      "verseKey": "2:23",
+      "position": 6,
+      "lineNumber": 12,
+      "text": "نَزَّلْنَا",
+      "code": "ﲶ",
+      "positionInLine": 7
+    },
+    {
+      "id": 26432,
+      "verseKey": "2:23",
+      "position": 7,
+      "lineNumber": 12,
+      "text": "عَلَىٰ",
+      "code": "ﲷ",
+      "positionInLine": 8
+    },
+    {
+      "id": 26433,
+      "verseKey": "2:23",
+      "position": 8,
+      "lineNumber": 12,
+      "text": "عَبْدِنَا",
+      "code": "ﲸ",
+      "positionInLine": 9
+    },
+    {
+      "id": 26434,
+      "verseKey": "2:23",
+      "position": 9,
+      "lineNumber": 12,
+      "text": "فَأْتُوا۟",
+      "code": "ﲹ",
+      "positionInLine": 10
+    },
+    {
+      "id": 26435,
+      "verseKey": "2:23",
+      "position": 10,
+      "lineNumber": 13,
+      "text": "بِسُورَةٍۢ",
+      "code": "ﲺ",
+      "positionInLine": 1
+    },
+    {
+      "id": 26436,
+      "verseKey": "2:23",
+      "position": 11,
+      "lineNumber": 13,
+      "text": "مِّن",
+      "code": "ﲻ",
+      "positionInLine": 2
+    },
+    {
+      "id": 26437,
+      "verseKey": "2:23",
+      "position": 12,
+      "lineNumber": 13,
+      "text": "مِّثْلِهِۦ",
+      "code": "ﲼ",
+      "positionInLine": 3
+    },
+    {
+      "id": 26438,
+      "verseKey": "2:23",
+      "position": 13,
+      "lineNumber": 13,
+      "text": "وَٱدْعُوا۟",
+      "code": "ﲽ",
+      "positionInLine": 4
+    },
+    {
+      "id": 26439,
+      "verseKey": "2:23",
+      "position": 14,
+      "lineNumber": 13,
+      "text": "شُهَدَآءَكُم",
+      "code": "ﲾ",
+      "positionInLine": 5
+    },
+    {
+      "id": 26440,
+      "verseKey": "2:23",
+      "position": 15,
+      "lineNumber": 13,
+      "text": "مِّن",
+      "code": "ﲿ",
+      "positionInLine": 6
+    },
+    {
+      "id": 26441,
+      "verseKey": "2:23",
+      "position": 16,
+      "lineNumber": 13,
+      "text": "دُونِ",
+      "code": "ﳀ",
+      "positionInLine": 7
+    },
+    {
+      "id": 26442,
+      "verseKey": "2:23",
+      "position": 17,
+      "lineNumber": 13,
+      "text": "ٱللَّهِ",
+      "code": "ﳁ",
+      "positionInLine": 8
+    },
+    {
+      "id": 26443,
+      "verseKey": "2:23",
+      "position": 18,
+      "lineNumber": 13,
+      "text": "إِن",
+      "code": "ﳂ",
+      "positionInLine": 9
+    },
+    {
+      "id": 26444,
+      "verseKey": "2:23",
+      "position": 19,
+      "lineNumber": 14,
+      "text": "كُنتُمْ",
+      "code": "ﳃ",
+      "positionInLine": 1
+    },
+    {
+      "id": 26445,
+      "verseKey": "2:23",
+      "position": 20,
+      "lineNumber": 14,
+      "text": "صَـٰدِقِينَ",
+      "code": "ﳄ",
+      "positionInLine": 2
+    },
+    {
+      "id": 27434,
+      "verseKey": "2:24",
+      "position": 1,
+      "lineNumber": 14,
+      "text": "فَإِن",
+      "code": "ﳆ",
+      "positionInLine": 3
+    },
+    {
+      "id": 27435,
+      "verseKey": "2:24",
+      "position": 2,
+      "lineNumber": 14,
+      "text": "لَّمْ",
+      "code": "ﳇ",
+      "positionInLine": 4
+    },
+    {
+      "id": 27436,
+      "verseKey": "2:24",
+      "position": 3,
+      "lineNumber": 14,
+      "text": "تَفْعَلُوا۟",
+      "code": "ﳈ",
+      "positionInLine": 5
+    },
+    {
+      "id": 27437,
+      "verseKey": "2:24",
+      "position": 4,
+      "lineNumber": 14,
+      "text": "وَلَن",
+      "code": "ﳉ",
+      "positionInLine": 6
+    },
+    {
+      "id": 27438,
+      "verseKey": "2:24",
+      "position": 5,
+      "lineNumber": 14,
+      "text": "تَفْعَلُوا۟",
+      "code": "ﳊ",
+      "positionInLine": 7
+    },
+    {
+      "id": 27439,
+      "verseKey": "2:24",
+      "position": 6,
+      "lineNumber": 14,
+      "text": "فَٱتَّقُوا۟",
+      "code": "ﳋ",
+      "positionInLine": 8
+    },
+    {
+      "id": 27440,
+      "verseKey": "2:24",
+      "position": 7,
+      "lineNumber": 14,
+      "text": "ٱلنَّارَ",
+      "code": "ﳌ",
+      "positionInLine": 9
+    },
+    {
+      "id": 27441,
+      "verseKey": "2:24",
+      "position": 8,
+      "lineNumber": 15,
+      "text": "ٱلَّتِى",
+      "code": "ﳍ",
+      "positionInLine": 1
+    },
+    {
+      "id": 27442,
+      "verseKey": "2:24",
+      "position": 9,
+      "lineNumber": 15,
+      "text": "وَقُودُهَا",
+      "code": "ﳎ",
+      "positionInLine": 2
+    },
+    {
+      "id": 27443,
+      "verseKey": "2:24",
+      "position": 10,
+      "lineNumber": 15,
+      "text": "ٱلنَّاسُ",
+      "code": "ﳏ",
+      "positionInLine": 3
+    },
+    {
+      "id": 27444,
+      "verseKey": "2:24",
+      "position": 11,
+      "lineNumber": 15,
+      "text": "وَٱلْحِجَارَةُ ۖ",
+      "code": "ﳐﳑ",
+      "positionInLine": 4
+    },
+    {
+      "id": 27446,
+      "verseKey": "2:24",
+      "position": 12,
+      "lineNumber": 15,
+      "text": "أُعِدَّتْ",
+      "code": "ﳒ",
+      "positionInLine": 5
+    },
+    {
+      "id": 27447,
+      "verseKey": "2:24",
+      "position": 13,
+      "lineNumber": 15,
+      "text": "لِلْكَـٰفِرِينَ",
+      "code": "ﳓ",
+      "positionInLine": 6
+    }
+  ]
+}

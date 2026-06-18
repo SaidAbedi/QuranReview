@@ -26,7 +26,7 @@ import {
   getAnnotations,
   updateAnnotation,
 } from '@/api/annotations';
-import { getQuranPage } from '@/api/quran';
+import { getQuranPage, getPageWordBounds, PageWordBounds, PageWord } from '@/api/quran';
 import {
   completeReview,
   deleteReviewVoiceNote,
@@ -40,6 +40,7 @@ import {
 import AudioPlayerBar from '@/components/AudioPlayerBar';
 import AnnotationCanvas, { LocalAnnotation } from '@/components/AnnotationCanvas';
 import AnnotationDetailsSheet from '@/components/AnnotationDetailsSheet';
+import WordTapSheet from '@/components/WordTapSheet';
 import { useTheme } from '@/hooks/useTheme';
 import type {
   AnnotationPoint,
@@ -111,9 +112,15 @@ export default function ReviewDetailScreen() {
 
   // ── UI ─────────────────────────────────────────────────────────────────────
   const [marking, setMarking] = useState(false);
+  const [wordTapMode, setWordTapMode] = useState(false);
   const [detailsAnnotation, setDetailsAnnotation] = useState<AnnotationRow | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  // ── Word tap ───────────────────────────────────────────────────────────────
+  const [wordBounds, setWordBounds] = useState<PageWordBounds | null>(null);
+  const [wordBoundsLoading, setWordBoundsLoading] = useState(false);
+  const [wordTapPending, setWordTapPending] = useState<{ normX: number; normY: number } | null>(null);
 
   // ── Review voice note ──────────────────────────────────────────────────────
   const [reviewVoiceNote, setReviewVoiceNote] = useState<ReviewVoiceNoteRow | null>(null);
@@ -152,9 +159,16 @@ export default function ReviewDetailScreen() {
     getAttemptHistory(submissionId).then(setAttemptHistory).catch(() => {});
     getReviewVoiceNote(submissionId, attemptId).then(setReviewVoiceNote).catch(() => {});
     if (pageNumber) {
-      getQuranPage(parseInt(pageNumber, 10))
+      const pNum = parseInt(pageNumber, 10);
+      getQuranPage(pNum)
         .then((page) => { if (page.imageUrl) setPageImageUrl(page.imageUrl); })
         .catch(() => {});
+      // Load word bounds (available for pages 1-20 only — silently ignore 404)
+      setWordBoundsLoading(true);
+      getPageWordBounds(pNum)
+        .then(setWordBounds)
+        .catch(() => {})
+        .finally(() => setWordBoundsLoading(false));
     }
   }, [loadAnnotations, submissionId, attemptId, pageNumber]);
 
@@ -230,6 +244,39 @@ export default function ReviewDetailScreen() {
   const handleDiscardFailed = useCallback((localId: string) => {
     setLocalAnnotations((prev) => prev.filter((a) => a.localId !== localId));
   }, []);
+
+  const handleWordTap = useCallback((normX: number, normY: number) => {
+    setWordTapPending({ normX, normY });
+  }, []);
+
+  const handleWordSelect = useCallback(async (word: PageWord, normX: number, normY: number) => {
+    setWordTapPending(null);
+    const localId = nextLocalId();
+    const strokeColor = '#7C3AED';
+    setLocalAnnotations((prev) => [
+      ...prev,
+      { localId, points: [{ x: normX, y: normY }], status: 'saving', strokeColor },
+    ]);
+    try {
+      const saved = await createAnnotation(submissionId, attemptId, {
+        annotationType: 'word_marker',
+        anchorType: 'word',
+        points: [{ x: normX, y: normY }],
+        style: { strokeColor, strokeWidth: 3 },
+        verseKey: word.verseKey,
+        wordId: word.id,
+        wordPosition: word.position,
+        lineNumber: word.lineNumber,
+      });
+      setLocalAnnotations((prev) => prev.filter((a) => a.localId !== localId));
+      setSavedAnnotations((prev) => [...prev, saved]);
+      setDetailsAnnotation(saved);
+    } catch {
+      setLocalAnnotations((prev) =>
+        prev.map((a) => (a.localId === localId ? { ...a, status: 'failed' } : a)),
+      );
+    }
+  }, [submissionId, attemptId]);
 
   const handleUpdateMetadata = useCallback(async (
     annotationId: string,
@@ -486,9 +533,10 @@ export default function ReviewDetailScreen() {
             imageUrl={pageImageUrl ?? undefined}
             savedAnnotations={savedAnnotations}
             localAnnotations={localAnnotations}
-            drawEnabled={marking}
+            drawEnabled={marking && !wordTapMode}
             onStrokeComplete={handleStrokeComplete}
-            onAnnotationTap={handleAnnotationTap}
+            onAnnotationTap={wordTapMode ? undefined : handleAnnotationTap}
+            onWordTap={wordTapMode ? handleWordTap : undefined}
           />
         )}
       </View>
@@ -542,14 +590,30 @@ export default function ReviewDetailScreen() {
           style={[
             styles.markBtn,
             { borderColor: T.border },
-            marking && { backgroundColor: T.brandPrimary, borderColor: T.brandPrimary },
+            marking && !wordTapMode && { backgroundColor: T.brandPrimary, borderColor: T.brandPrimary },
           ]}
-          onPress={() => setMarking((v) => !v)}
+          onPress={() => { setMarking((v) => !v); setWordTapMode(false); }}
         >
-          <Text style={[styles.markBtnText, { color: marking ? T.brandOnPrimary : T.textSecondary }]}>
-            {marking ? '✏️ Marking' : '✏️ Mark'}
+          <Text style={[styles.markBtnText, { color: (marking && !wordTapMode) ? T.brandOnPrimary : T.textSecondary }]}>
+            {(marking && !wordTapMode) ? '✏️ On' : '✏️'}
           </Text>
         </TouchableOpacity>
+
+        {/* Word tap mode toggle (only shown when word bounds are available) */}
+        {(wordBounds || wordBoundsLoading) && (
+          <TouchableOpacity
+            style={[
+              styles.markBtn,
+              { borderColor: T.border },
+              wordTapMode && { backgroundColor: T.info, borderColor: T.info },
+            ]}
+            onPress={() => { setWordTapMode((v) => !v); setMarking(false); }}
+          >
+            <Text style={[styles.markBtnText, { color: wordTapMode ? '#fff' : T.textSecondary }]}>
+              {wordTapMode ? 'ء On' : 'ء'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* More actions */}
         <TouchableOpacity style={[styles.menuBtn, { backgroundColor: T.surfaceRaised }]} onPress={() => setActionsOpen(true)}>
@@ -633,6 +697,17 @@ export default function ReviewDetailScreen() {
         onUpdateMetadata={handleUpdateMetadata}
         onDelete={handleDeleteSaved}
         onClose={() => setDetailsAnnotation(null)}
+      />
+
+      {/* ── Word tap sheet ── */}
+      <WordTapSheet
+        visible={wordTapPending !== null}
+        normX={wordTapPending?.normX ?? 0}
+        normY={wordTapPending?.normY ?? 0}
+        wordBounds={wordBounds}
+        loading={wordBoundsLoading}
+        onSelect={handleWordSelect}
+        onClose={() => setWordTapPending(null)}
       />
 
       {/* ── Review voice note modal ── */}

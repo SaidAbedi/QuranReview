@@ -46,9 +46,11 @@ export default function RootLayout() {
 
     const inAuthGroup = segments[0] === "(auth)";
 
-    if (!session) {
+    if (!session || !user) {
+      // No session, or session exists but profile fetch failed (e.g. backend unreachable).
+      // In both cases send to login — the user can authenticate once the backend is up.
       if (!inAuthGroup) router.replace("/(auth)/login");
-    } else if (user) {
+    } else {
       const status = user.profile.onboardingStatus;
       if (status === "pending_assignment" || status === "new") {
         if (segments[0] !== "pending") router.replace("/pending");

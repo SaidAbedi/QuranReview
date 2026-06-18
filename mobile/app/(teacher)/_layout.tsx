@@ -1,6 +1,9 @@
 import { Stack } from 'expo-router';
+import { useTheme } from '@/hooks/useTheme';
 
 export default function TeacherLayout() {
+  const theme = useTheme();
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -9,8 +12,8 @@ export default function TeacherLayout() {
         options={{
           headerShown: true,
           title: 'Review',
-          headerStyle: { backgroundColor: '#1B4F72' },
-          headerTintColor: '#fff',
+          headerStyle: { backgroundColor: theme.colors.headerBg },
+          headerTintColor: theme.colors.headerText,
           headerTitleStyle: { fontWeight: '700' },
         }}
       />

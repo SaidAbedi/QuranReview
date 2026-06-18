@@ -17,6 +17,7 @@ import { getStudentSubmissions, getSubmissionAttempts } from '@/api/submissions'
 import type { AssignmentSummary, AttemptRow, SubmissionRow } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
+import { useTheme } from '@/hooks/useTheme';
 
 const SUBMISSION_STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
@@ -26,16 +27,6 @@ const SUBMISSION_STATUS_LABELS: Record<string, string> = {
   needs_resubmission: 'Needs Practice',
   completed: 'Completed',
   archived: 'Archived',
-};
-
-const SUBMISSION_STATUS_COLORS: Record<string, string> = {
-  draft: '#6B7280',
-  submitted: '#1B4F72',
-  in_review: '#D97706',
-  reviewed: '#7C3AED',
-  needs_resubmission: '#DC2626',
-  completed: '#059669',
-  archived: '#9CA3AF',
 };
 
 const ATTEMPT_STATUS_LABELS: Record<string, string> = {
@@ -59,6 +50,8 @@ export default function AssignmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const T = theme.colors;
 
   const [assignment, setAssignment] = useState<AssignmentSummary | null>(null);
   const [submission, setSubmission] = useState<SubmissionRow | null>(null);
@@ -176,8 +169,8 @@ export default function AssignmentDetailScreen() {
   const statusLabel = submission
     ? (SUBMISSION_STATUS_LABELS[submission.status] ?? submission.status)
     : null;
-  const statusColor = submission
-    ? (SUBMISSION_STATUS_COLORS[submission.status] ?? '#6B7280')
+  const statusChip = submission
+    ? (theme.chips[submission.status as keyof typeof theme.chips] ?? null)
     : null;
   const hasAttempts = attempts.length > 0;
 
@@ -188,29 +181,29 @@ export default function AssignmentDetailScreen() {
   // neither (submitted/in_review)                   → [📋?] [status indicator flex:1]
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: T.surface }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* ── Top bar ── */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { backgroundColor: T.surface, borderBottomColor: T.border }]}>
         <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()}>
-          <Text style={styles.topBarBack}>‹</Text>
+          <Text style={[styles.topBarBack, { color: T.brandPrimary }]}>‹</Text>
         </TouchableOpacity>
         <View style={styles.topBarCenter}>
-          <Text style={styles.topBarTitle} numberOfLines={1}>{title}</Text>
+          <Text style={[styles.topBarTitle, { color: T.textPrimary }]} numberOfLines={1}>{title}</Text>
           {assignment.surahNameEnglish != null && (
-            <Text style={styles.topBarSub}>{assignment.surahNameEnglish}</Text>
+            <Text style={[styles.topBarSub, { color: T.textMuted }]}>{assignment.surahNameEnglish}</Text>
           )}
         </View>
-        {statusLabel && statusColor && (
-          <View style={[styles.statusPill, { backgroundColor: statusColor }]}>
-            <Text style={styles.statusPillText} numberOfLines={1}>{statusLabel}</Text>
+        {statusLabel && statusChip && (
+          <View style={[styles.statusPill, { backgroundColor: statusChip.bg }]}>
+            <Text style={[styles.statusPillText, { color: statusChip.text }]} numberOfLines={1}>{statusLabel}</Text>
           </View>
         )}
       </View>
 
       {/* ── Full-screen page image ── */}
-      <View style={styles.canvasArea}>
+      <View style={[styles.canvasArea, { backgroundColor: T.backgroundAlt }]}>
         {pageImageUrl ? (
           <Image
             source={{ uri: pageImageUrl }}
@@ -219,7 +212,7 @@ export default function AssignmentDetailScreen() {
           />
         ) : (
           <View style={styles.pagePlaceholder}>
-            <Text style={styles.pagePlaceholderText}>
+            <Text style={[styles.pagePlaceholderText, { color: T.textMuted }]}>
               {assignment.pageNumber ? `Page ${assignment.pageNumber}` : 'Page unavailable'}
             </Text>
           </View>
@@ -235,14 +228,14 @@ export default function AssignmentDetailScreen() {
       </View>
 
       {/* ── Bottom bar ── */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8, backgroundColor: T.surface, borderTopColor: T.border }]}>
 
         {hasAttempts && (
-          <TouchableOpacity style={styles.attemptsBtn} onPress={() => setAttemptsOpen(true)}>
+          <TouchableOpacity style={[styles.attemptsBtn, { backgroundColor: T.backgroundAlt }]} onPress={() => setAttemptsOpen(true)}>
             <Text style={styles.attemptsBtnIcon}>📋</Text>
             {attempts.length > 1 && (
-              <View style={styles.attemptsBadge}>
-                <Text style={styles.attemptsBadgeText}>{attempts.length}</Text>
+              <View style={[styles.attemptsBadge, { backgroundColor: T.brandPrimary }]}>
+                <Text style={[styles.attemptsBadgeText, { color: T.brandOnPrimary }]}>{attempts.length}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -251,24 +244,24 @@ export default function AssignmentDetailScreen() {
         {canRecord && canViewFeedback ? (
           // needs_resubmission: record is primary, feedback secondary
           <>
-            <TouchableOpacity style={styles.recordBtn} onPress={handleRecord}>
-              <Text style={styles.recordBtnText}>🎙  Record New Attempt</Text>
+            <TouchableOpacity style={[styles.recordBtn, { backgroundColor: T.brandPrimary }]} onPress={handleRecord}>
+              <Text style={[styles.recordBtnText, { color: T.brandOnPrimary }]}>🎙  Record New Attempt</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.feedbackBtnSecondary} onPress={handleViewFeedback}>
-              <Text style={styles.feedbackBtnSecondaryText}>Feedback</Text>
+            <TouchableOpacity style={[styles.feedbackBtnSecondary, { borderColor: T.info }]} onPress={handleViewFeedback}>
+              <Text style={[styles.feedbackBtnSecondaryText, { color: T.info }]}>Feedback</Text>
             </TouchableOpacity>
           </>
         ) : canRecord ? (
           // no submission or draft: full-width record button
-          <TouchableOpacity style={styles.recordBtn} onPress={handleRecord}>
-            <Text style={styles.recordBtnText}>
+          <TouchableOpacity style={[styles.recordBtn, { backgroundColor: T.brandPrimary }]} onPress={handleRecord}>
+            <Text style={[styles.recordBtnText, { color: T.brandOnPrimary }]}>
               {submission ? '🎙  Record New Attempt' : '🎙  Start Recording'}
             </Text>
           </TouchableOpacity>
         ) : canViewFeedback ? (
           // reviewed or completed: feedback is the only action
-          <TouchableOpacity style={styles.feedbackBtnPrimary} onPress={handleViewFeedback}>
-            <Text style={styles.feedbackBtnPrimaryText}>View Teacher Feedback</Text>
+          <TouchableOpacity style={[styles.feedbackBtnPrimary, { backgroundColor: T.info }]} onPress={handleViewFeedback}>
+            <Text style={[styles.feedbackBtnPrimaryText, { color: T.textInverse }]}>View Teacher Feedback</Text>
           </TouchableOpacity>
         ) : (
           // submitted / in_review: waiting state
@@ -276,11 +269,11 @@ export default function AssignmentDetailScreen() {
             {submission?.status === 'in_review' && (
               <ActivityIndicator
                 size="small"
-                color="#D97706"
+                color={T.warning}
                 style={styles.statusSpinner}
               />
             )}
-            <Text style={styles.statusIndicatorText}>{statusLabel}</Text>
+            <Text style={[styles.statusIndicatorText, { color: T.textMuted }]}>{statusLabel}</Text>
           </View>
         )}
       </View>
@@ -299,20 +292,20 @@ export default function AssignmentDetailScreen() {
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}
+            style={[styles.sheet, { paddingBottom: insets.bottom + 12, backgroundColor: T.surface }]}
           >
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Your Attempts</Text>
+            <View style={[styles.sheetHandle, { backgroundColor: T.border }]} />
+            <Text style={[styles.sheetTitle, { color: T.textPrimary }]}>Your Attempts</Text>
 
             {(assignment.dueAt || assignment.instructions) && (
               <View style={styles.sheetMeta}>
                 {assignment.dueAt && (
-                  <Text style={styles.sheetMetaText}>
+                  <Text style={[styles.sheetMetaText, { color: T.textMuted }]}>
                     Due {new Date(assignment.dueAt).toLocaleDateString()}
                   </Text>
                 )}
                 {assignment.instructions && (
-                  <Text style={styles.sheetInstructions}>{assignment.instructions}</Text>
+                  <Text style={[styles.sheetInstructions, { color: T.textSecondary }]}>{assignment.instructions}</Text>
                 )}
               </View>
             )}
@@ -322,7 +315,7 @@ export default function AssignmentDetailScreen() {
               showsVerticalScrollIndicator={false}
             >
               {attempts.length === 0 ? (
-                <Text style={styles.sheetEmpty}>No attempts yet.</Text>
+                <Text style={[styles.sheetEmpty, { color: T.textMuted }]}>No attempts yet.</Text>
               ) : (
                 [...attempts].reverse().map((a) => {
                   const hasFeedback =
@@ -330,28 +323,38 @@ export default function AssignmentDetailScreen() {
                     a.status === 'completed' ||
                     a.status === 'needs_resubmission';
                   const isCurrent = a.id === submission?.currentAttemptId;
-                  const aColor = SUBMISSION_STATUS_COLORS[a.status] ?? '#6B7280';
+                  const aChip = theme.chips[a.status as keyof typeof theme.chips];
+                  const aChipBg = aChip?.bg ?? T.backgroundAlt;
+                  const aChipText = aChip?.text ?? T.textMuted;
                   return (
                     <TouchableOpacity
                       key={a.id}
-                      style={[styles.attemptRow, isCurrent && styles.attemptRowCurrent]}
+                      style={[
+                        styles.attemptRow,
+                        { borderTopColor: T.backgroundAlt },
+                        isCurrent && { backgroundColor: T.brandPrimarySoft, marginHorizontal: -20, paddingHorizontal: 20 },
+                      ]}
                       onPress={() => hasFeedback && handleViewAttemptFeedback(a)}
                       disabled={!hasFeedback}
                       activeOpacity={hasFeedback ? 0.6 : 1}
                     >
                       <View style={styles.attemptRowInfo}>
-                        <Text style={[styles.attemptNum, isCurrent && styles.attemptNumCurrent]}>
+                        <Text style={[
+                          styles.attemptNum,
+                          { color: T.textSecondary },
+                          isCurrent && { color: T.brandPrimary, fontWeight: '700' },
+                        ]}>
                           Attempt {a.attemptNumber}
                           {isCurrent ? ' · current' : ''}
                         </Text>
-                        <Text style={styles.attemptDate}>{relativeDate(a.submittedAt)}</Text>
+                        <Text style={[styles.attemptDate, { color: T.textMuted }]}>{relativeDate(a.submittedAt)}</Text>
                       </View>
-                      <View style={[styles.attemptStatusBadge, { backgroundColor: aColor }]}>
-                        <Text style={styles.attemptStatusText}>
+                      <View style={[styles.attemptStatusBadge, { backgroundColor: aChipBg }]}>
+                        <Text style={[styles.attemptStatusText, { color: aChipText }]}>
                           {ATTEMPT_STATUS_LABELS[a.status] ?? a.status}
                         </Text>
                       </View>
-                      {hasFeedback && <Text style={styles.attemptChevron}>›</Text>}
+                      {hasFeedback && <Text style={[styles.attemptChevron, { color: T.textMuted }]}>›</Text>}
                     </TouchableOpacity>
                   );
                 })
@@ -365,7 +368,7 @@ export default function AssignmentDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
+  root: { flex: 1 },
 
   // Top bar
   topBar: {
@@ -373,15 +376,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 52,
     paddingHorizontal: 4,
-    backgroundColor: '#fff',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E7EB',
   },
   topBarBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  topBarBack: { fontSize: 28, color: '#1B4F72', lineHeight: 32 },
+  topBarBack: { fontSize: 28, lineHeight: 32 },
   topBarCenter: { flex: 1, alignItems: 'center' },
-  topBarTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  topBarSub: { fontSize: 12, color: '#6B7280', marginTop: 1 },
+  topBarTitle: { fontSize: 15, fontWeight: '700' },
+  topBarSub: { fontSize: 12, marginTop: 1 },
   statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -389,16 +390,15 @@ const styles = StyleSheet.create({
     marginRight: 8,
     maxWidth: 120,
   },
-  statusPillText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  statusPillText: { fontSize: 10, fontWeight: '700' },
 
   // Canvas / page
   canvasArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
     overflow: 'hidden',
   },
   pagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  pagePlaceholderText: { fontSize: 13, color: '#9CA3AF' },
+  pagePlaceholderText: { fontSize: 13 },
   instructionsOverlay: {
     position: 'absolute',
     bottom: 12,
@@ -418,9 +418,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     gap: 8,
-    backgroundColor: '#fff',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
   },
   attemptsBtn: {
     width: 44,
@@ -428,47 +426,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
   },
   attemptsBtnIcon: { fontSize: 20 },
   attemptsBadge: {
     position: 'absolute',
     top: 4,
     right: 4,
-    backgroundColor: '#1B4F72',
     borderRadius: 6,
     minWidth: 14,
     paddingHorizontal: 2,
     alignItems: 'center',
   },
-  attemptsBadgeText: { fontSize: 9, fontWeight: '800', color: '#fff' },
+  attemptsBadgeText: { fontSize: 9, fontWeight: '800' },
 
   recordBtn: {
     flex: 1,
-    backgroundColor: '#1B4F72',
     borderRadius: 10,
     paddingVertical: 11,
     alignItems: 'center',
   },
-  recordBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  recordBtnText: { fontSize: 14, fontWeight: '700' },
 
   feedbackBtnPrimary: {
     flex: 1,
-    backgroundColor: '#7C3AED',
     borderRadius: 10,
     paddingVertical: 11,
     alignItems: 'center',
   },
-  feedbackBtnPrimaryText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  feedbackBtnPrimaryText: { fontSize: 14, fontWeight: '700' },
 
   feedbackBtnSecondary: {
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: '#7C3AED',
   },
-  feedbackBtnSecondaryText: { fontSize: 13, fontWeight: '700', color: '#7C3AED' },
+  feedbackBtnSecondaryText: { fontSize: 13, fontWeight: '700' },
 
   statusIndicator: {
     flex: 1,
@@ -478,12 +471,11 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   statusSpinner: { marginRight: 8 },
-  statusIndicatorText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  statusIndicatorText: { fontSize: 14, fontWeight: '500' },
 
   // Attempt history sheet
   sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
-    backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 12,
@@ -491,39 +483,31 @@ const styles = StyleSheet.create({
   },
   sheetHandle: {
     width: 40, height: 4, borderRadius: 2,
-    backgroundColor: '#E5E7EB',
     alignSelf: 'center',
     marginBottom: 12,
   },
-  sheetTitle: { fontSize: 17, fontWeight: '700', color: '#111827', paddingHorizontal: 20, marginBottom: 8 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', paddingHorizontal: 20, marginBottom: 8 },
   sheetMeta: { paddingHorizontal: 20, marginBottom: 12, gap: 4 },
-  sheetMetaText: { fontSize: 12, color: '#9CA3AF' },
-  sheetInstructions: { fontSize: 13, color: '#374151', lineHeight: 18, marginTop: 4 },
+  sheetMetaText: { fontSize: 12 },
+  sheetInstructions: { fontSize: 13, lineHeight: 18, marginTop: 4 },
   sheetScroll: { paddingHorizontal: 20 },
-  sheetEmpty: { fontSize: 14, color: '#9CA3AF', paddingVertical: 20, textAlign: 'center' },
+  sheetEmpty: { fontSize: 14, paddingVertical: 20, textAlign: 'center' },
 
   attemptRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 13,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#F3F4F6',
     gap: 10,
   },
-  attemptRowCurrent: {
-    backgroundColor: '#EFF6FF',
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-  },
   attemptRowInfo: { flex: 1 },
-  attemptNum: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  attemptNumCurrent: { color: '#1D4ED8', fontWeight: '700' },
-  attemptDate: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  attemptNum: { fontSize: 14, fontWeight: '600' },
+  attemptDate: { fontSize: 12, marginTop: 2 },
   attemptStatusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  attemptStatusText: { fontSize: 11, fontWeight: '700', color: '#fff' },
-  attemptChevron: { fontSize: 20, color: '#9CA3AF' },
+  attemptStatusText: { fontSize: 11, fontWeight: '700' },
+  attemptChevron: { fontSize: 20 },
 });

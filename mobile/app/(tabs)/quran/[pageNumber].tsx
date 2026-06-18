@@ -16,7 +16,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getQuranPage } from '@/api/quran';
 import { createSelfPacedSubmission, getStudentSubmissions } from '@/api/submissions';
-import { C } from '@/constants/colors';
+import { useTheme } from '@/hooks/useTheme';
 import { ApiError } from '@/api/client';
 import type { QuranPageSummary, SubmissionRow } from '@/types/api';
 
@@ -28,6 +28,8 @@ export default function QuranPageScreen() {
   const { pageNumber: pageParam } = useLocalSearchParams<{ pageNumber: string }>();
   const pageNumber = parseInt(pageParam ?? '1', 10);
   const router = useRouter();
+  const theme = useTheme('dark');
+  const T = theme.colors;
 
   const [page, setPage]               = useState<QuranPageSummary | null>(null);
   const [loadingPage, setLoadingPage]   = useState(true);
@@ -157,7 +159,7 @@ export default function QuranPageScreen() {
     : Math.round(SCREEN_W * (2103 / 1300));
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: T.background }]}>
       <Stack.Screen options={{ title: `Page ${pageNumber}` }} />
 
       <ScrollView
@@ -169,8 +171,8 @@ export default function QuranPageScreen() {
         onScroll={handleScroll}
       >
         {loadingPage ? (
-          <View style={[styles.imagePlaceholder, { height: imgH }]}>
-            <ActivityIndicator size="large" color={C.blue} />
+          <View style={[styles.imagePlaceholder, { height: imgH, backgroundColor: T.backgroundAlt }]}>
+            <ActivityIndicator size="large" color={T.brandPrimary} />
           </View>
         ) : page?.imageUrl ? (
           <Image
@@ -179,40 +181,52 @@ export default function QuranPageScreen() {
             resizeMode="contain"
           />
         ) : (
-          <View style={[styles.imagePlaceholder, { height: imgH }]}>
-            <Text style={styles.placeholderText}>Page image unavailable</Text>
+          <View style={[styles.imagePlaceholder, { height: imgH, backgroundColor: T.backgroundAlt }]}>
+            <Text style={[styles.placeholderText, { color: T.textMuted }]}>Page image unavailable</Text>
           </View>
         )}
       </ScrollView>
 
       <Animated.View
-        style={[styles.footer, { transform: [{ translateY: footerTranslate }] }]}
+        style={[
+          styles.footer,
+          {
+            transform: [{ translateY: footerTranslate }],
+            backgroundColor: T.surface,
+            borderTopColor: T.border,
+          },
+        ]}
         onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
       >
         <TouchableOpacity
-          style={[styles.reciteBtn, submitting && styles.btnDisabled, !hasFeedback && styles.reciteBtnFull]}
+          style={[
+            styles.reciteBtn,
+            { backgroundColor: T.brandPrimary },
+            submitting && styles.btnDisabled,
+            !hasFeedback && styles.reciteBtnFull,
+          ]}
           onPress={handleRecite}
           disabled={submitting}
           activeOpacity={0.82}
         >
           {submitting ? (
-            <ActivityIndicator color={C.white} size="small" />
+            <ActivityIndicator color={T.brandOnPrimary} size="small" />
           ) : (
             <>
               <Text style={styles.reciteIcon}>🎙</Text>
-              <Text style={styles.reciteLabel}>Recite</Text>
+              <Text style={[styles.reciteLabel, { color: T.brandOnPrimary }]}>Recite</Text>
             </>
           )}
         </TouchableOpacity>
 
         {hasFeedback && (
           <TouchableOpacity
-            style={styles.feedbackBtnActive}
+            style={[styles.feedbackBtnActive, { backgroundColor: T.surface, borderColor: T.brandPrimary }]}
             onPress={handleFeedback}
             activeOpacity={0.75}
           >
             <Text style={styles.feedbackIcon}>📋</Text>
-            <Text style={styles.feedbackLabelActive}>Feedback</Text>
+            <Text style={[styles.feedbackLabelActive, { color: T.brandPrimary }]}>Feedback</Text>
           </TouchableOpacity>
         )}
       </Animated.View>
@@ -221,7 +235,7 @@ export default function QuranPageScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.white },
+  container: { flex: 1 },
 
   scroll:        { flex: 1 },
   scrollContent: { flexGrow: 1 },
@@ -230,9 +244,8 @@ const styles = StyleSheet.create({
     width: SCREEN_W,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: C.grayBg,
   },
-  placeholderText: { color: C.textMuted, fontSize: 14 },
+  placeholderText: { fontSize: 14 },
 
   footer: {
     position: 'absolute',
@@ -244,9 +257,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 28,
-    backgroundColor: C.white,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
   },
 
   reciteBtn: {
@@ -255,14 +266,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: C.blue,
     borderRadius: 14,
     paddingVertical: 14,
   },
   reciteBtnFull: { flex: 1 },
   btnDisabled:   { opacity: 0.55 },
   reciteIcon:    { fontSize: 18 },
-  reciteLabel:   { fontSize: 16, fontWeight: '700', color: C.white },
+  reciteLabel:   { fontSize: 16, fontWeight: '700' },
 
   feedbackBtnActive: {
     flex: 2,
@@ -270,12 +280,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: C.white,
     borderRadius: 14,
     paddingVertical: 14,
     borderWidth: 1.5,
-    borderColor: C.blue,
   },
   feedbackIcon:        { fontSize: 16 },
-  feedbackLabelActive: { fontSize: 14, fontWeight: '600', color: C.blue },
+  feedbackLabelActive: { fontSize: 14, fontWeight: '600' },
 });

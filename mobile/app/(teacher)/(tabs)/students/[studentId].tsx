@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getTeacherStudentSubmissions } from '@/api/teacher';
-import { C } from '@/constants/colors';
+import { useTheme } from '@/hooks/useTheme';
 import type { TeacherStudentSubmission } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
@@ -22,26 +22,6 @@ const STATUS_LABELS: Record<string, string> = {
   needs_resubmission: 'Needs Practice',
   completed:          'Completed',
   archived:           'Archived',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  draft:              C.gray,
-  submitted:          C.amber,
-  in_review:          C.blue,
-  reviewed:           C.purple,
-  needs_resubmission: C.red,
-  completed:          C.green,
-  archived:           C.grayLight,
-};
-
-const STATUS_BG: Record<string, string> = {
-  draft:              C.grayBg,
-  submitted:          C.amberBg,
-  in_review:          C.blueBg,
-  reviewed:           C.purpleBg,
-  needs_resubmission: C.redBg,
-  completed:          C.greenBg,
-  archived:           C.grayBg,
 };
 
 function relativeDate(iso: string | null): string {
@@ -61,38 +41,39 @@ function SubmissionRow({
   submission: TeacherStudentSubmission;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const label = STATUS_LABELS[submission.status] ?? submission.status;
-  const color = STATUS_COLORS[submission.status] ?? C.gray;
-  const bg    = STATUS_BG[submission.status] ?? C.grayBg;
+  const chip  = theme.chips[submission.status as keyof typeof theme.chips] ?? { bg: T.backgroundAlt, text: T.textMuted };
   const canOpen = !!submission.currentAttemptId &&
     ['submitted', 'in_review', 'reviewed', 'needs_resubmission', 'completed'].includes(submission.status);
   const lastDate = submission.completedAt ?? submission.reviewedAt ?? submission.submittedAt ?? submission.createdAt;
 
   return (
     <TouchableOpacity
-      style={[styles.row, !canOpen && styles.rowDim]}
+      style={[styles.row, { backgroundColor: T.surface }, !canOpen && styles.rowDim]}
       onPress={onPress}
       activeOpacity={canOpen ? 0.7 : 1}
       disabled={!canOpen}
     >
       <View style={styles.rowLeft}>
-        <Text style={styles.rowPage}>
+        <Text style={[styles.rowPage, { color: T.textPrimary }]}>
           Page {submission.pageNumber ?? '?'}
           {submission.assignmentTitle ? ` — ${submission.assignmentTitle}` : ''}
         </Text>
         <View style={styles.rowMeta}>
-          <View style={[styles.statusBadge, { backgroundColor: bg }]}>
-            <Text style={[styles.statusText, { color }]}>{label}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: chip.bg }]}>
+            <Text style={[styles.statusText, { color: chip.text }]}>{label}</Text>
           </View>
           {submission.attemptCount > 0 && (
-            <Text style={styles.attemptText}>
+            <Text style={[styles.attemptText, { color: T.textMuted }]}>
               {submission.attemptCount} attempt{submission.attemptCount !== 1 ? 's' : ''}
             </Text>
           )}
-          <Text style={styles.dateText}>{relativeDate(lastDate)}</Text>
+          <Text style={[styles.dateText, { color: T.textMuted }]}>{relativeDate(lastDate)}</Text>
         </View>
       </View>
-      {canOpen && <Text style={styles.chevron}>›</Text>}
+      {canOpen && <Text style={[styles.chevron, { color: T.textMuted }]}>›</Text>}
     </TouchableOpacity>
   );
 }
@@ -100,6 +81,8 @@ function SubmissionRow({
 export default function StudentDetailScreen() {
   const { studentId, studentName } = useLocalSearchParams<{ studentId: string; studentName: string }>();
   const router = useRouter();
+  const theme = useTheme();
+  const T = theme.colors;
 
   const [submissions, setSubmissions] = useState<TeacherStudentSubmission[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -150,35 +133,35 @@ export default function StudentDetailScreen() {
     <>
       <Stack.Screen options={{ title: studentName ?? 'Student' }} />
       <FlatList
-        style={styles.list}
+        style={[styles.list, { backgroundColor: T.backgroundAlt }]}
         contentContainerStyle={submissions.length === 0 ? styles.emptyWrap : styles.listContent}
         data={submissions}
         keyExtractor={(s) => s.submissionId}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.blue} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={T.brandPrimary} />
         }
         ListHeaderComponent={
           submissions.length > 0 ? (
-            <View style={styles.summaryCard}>
+            <View style={[styles.summaryCard, { backgroundColor: T.surface }]}>
               <View style={styles.summaryStats}>
                 <View style={styles.summaryStat}>
-                  <Text style={[styles.summaryNum, { color: C.blue }]}>{submissions.length}</Text>
-                  <Text style={styles.summaryLabel}>Total</Text>
+                  <Text style={[styles.summaryNum, { color: T.brandPrimary }]}>{submissions.length}</Text>
+                  <Text style={[styles.summaryLabel, { color: T.textMuted }]}>Total</Text>
                 </View>
                 <View style={styles.summaryStat}>
-                  <Text style={[styles.summaryNum, { color: C.green }]}>{completed}</Text>
-                  <Text style={styles.summaryLabel}>Completed</Text>
+                  <Text style={[styles.summaryNum, { color: T.success }]}>{completed}</Text>
+                  <Text style={[styles.summaryLabel, { color: T.textMuted }]}>Completed</Text>
                 </View>
                 {needsPractice > 0 && (
                   <View style={styles.summaryStat}>
-                    <Text style={[styles.summaryNum, { color: C.red }]}>{needsPractice}</Text>
-                    <Text style={styles.summaryLabel}>Needs Practice</Text>
+                    <Text style={[styles.summaryNum, { color: T.error }]}>{needsPractice}</Text>
+                    <Text style={[styles.summaryLabel, { color: T.textMuted }]}>Needs Practice</Text>
                   </View>
                 )}
                 {needsReview > 0 && (
                   <View style={styles.summaryStat}>
-                    <Text style={[styles.summaryNum, { color: C.amber }]}>{needsReview}</Text>
-                    <Text style={styles.summaryLabel}>Awaiting Review</Text>
+                    <Text style={[styles.summaryNum, { color: T.warning }]}>{needsReview}</Text>
+                    <Text style={[styles.summaryLabel, { color: T.textMuted }]}>Awaiting Review</Text>
                   </View>
                 )}
               </View>
@@ -187,14 +170,14 @@ export default function StudentDetailScreen() {
         }
         renderItem={({ item, index }) => (
           <View>
-            {index > 0 && <View style={styles.divider} />}
+            {index > 0 && <View style={[styles.divider, { backgroundColor: T.border }]} />}
             <SubmissionRow submission={item} onPress={() => handlePress(item)} />
           </View>
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No submissions yet</Text>
-            <Text style={styles.emptyBody}>
+            <Text style={[styles.emptyTitle, { color: T.brandPrimary }]}>No submissions yet</Text>
+            <Text style={[styles.emptyBody, { color: T.textMuted }]}>
               {studentName ?? 'This student'} hasn't submitted any recordings yet.
             </Text>
           </View>
@@ -205,12 +188,11 @@ export default function StudentDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: C.surface },
+  list: { flex: 1 },
   listContent: { paddingBottom: 32 },
   emptyWrap:   { flex: 1 },
 
   summaryCard: {
-    backgroundColor: C.white,
     margin: 16,
     marginBottom: 8,
     borderRadius: 14,
@@ -224,30 +206,29 @@ const styles = StyleSheet.create({
   summaryStats: { flexDirection: 'row', justifyContent: 'space-around' },
   summaryStat:  { alignItems: 'center' },
   summaryNum:   { fontSize: 26, fontWeight: '800' },
-  summaryLabel: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  summaryLabel: { fontSize: 11, marginTop: 2 },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.white,
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 10,
   },
   rowDim:   { opacity: 0.6 },
   rowLeft:  { flex: 1, gap: 6 },
-  rowPage:  { fontSize: 14, fontWeight: '600', color: C.text },
+  rowPage:  { fontSize: 14, fontWeight: '600' },
   rowMeta:  { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
 
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   statusText:  { fontSize: 11, fontWeight: '700' },
-  attemptText: { fontSize: 11, color: C.textMuted },
-  dateText:    { fontSize: 11, color: C.grayLight },
-  chevron:     { fontSize: 20, color: C.grayLight },
+  attemptText: { fontSize: 11 },
+  dateText:    { fontSize: 11 },
+  chevron:     { fontSize: 20 },
 
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.border, marginLeft: 16 },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
 
   empty:      { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.blue, textAlign: 'center' },
-  emptyBody:  { fontSize: 14, color: C.textMuted, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  emptyBody:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 });

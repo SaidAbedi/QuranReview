@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import { getRecordingUrl } from '@/api/teacher';
+import { useTheme } from '@/hooks/useTheme';
 
 interface Props {
   submissionId: string;
@@ -11,6 +12,9 @@ interface Props {
 }
 
 export default function AudioPlayerBar({ submissionId, attemptId, compact = false }: Props) {
+  const theme = useTheme();
+  const T = theme.colors;
+
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
@@ -34,11 +38,11 @@ export default function AudioPlayerBar({ submissionId, attemptId, compact = fals
   };
 
   if (loadingUrl) {
-    if (compact) return <ActivityIndicator color="#fff" size="small" />;
+    if (compact) return <ActivityIndicator color={T.textInverse} size="small" />;
     return (
-      <View style={styles.bar}>
-        <ActivityIndicator color="#1B4F72" />
-        <Text style={styles.label}>Loading recording…</Text>
+      <View style={[styles.bar, { backgroundColor: T.surface, borderColor: T.border }]}>
+        <ActivityIndicator color={T.brandPrimary} />
+        <Text style={[styles.label, { color: T.textMuted }]}>Loading recording…</Text>
       </View>
     );
   }
@@ -49,8 +53,8 @@ export default function AudioPlayerBar({ submissionId, attemptId, compact = fals
       return null;
     }
     return (
-      <View style={styles.bar}>
-        <Text style={styles.error}>{urlError}</Text>
+      <View style={[styles.bar, { backgroundColor: T.surface, borderColor: T.border }]}>
+        <Text style={[styles.error, { color: T.error }]}>{urlError}</Text>
       </View>
     );
   }
@@ -77,28 +81,32 @@ export default function AudioPlayerBar({ submissionId, attemptId, compact = fals
 
   if (compact) {
     return (
-      <TouchableOpacity style={styles.compactBtn} onPress={handlePlayPause} accessibilityLabel={isPlaying ? 'Pause' : 'Play'}>
-        <Text style={styles.compactIcon}>{isPlaying ? '⏸' : '▶'}</Text>
-        <Text style={styles.compactTime}>{formatTime(currentTime)}</Text>
+      <TouchableOpacity
+        style={[styles.compactBtn, { backgroundColor: T.backgroundAlt }]}
+        onPress={handlePlayPause}
+        accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+      >
+        <Text style={[styles.compactIcon, { color: T.brandPrimary }]}>{isPlaying ? '⏸' : '▶'}</Text>
+        <Text style={[styles.compactTime, { color: T.textSecondary }]}>{formatTime(currentTime)}</Text>
       </TouchableOpacity>
     );
   }
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { backgroundColor: T.surface, borderColor: T.border }]}>
       <TouchableOpacity
-        style={styles.playBtn}
+        style={[styles.playBtn, { backgroundColor: T.brandPrimary }]}
         onPress={handlePlayPause}
         accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
       >
-        <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+        <Text style={[styles.playIcon, { color: T.brandOnPrimary }]}>{isPlaying ? '⏸' : '▶'}</Text>
       </TouchableOpacity>
       <View style={styles.timeRow}>
-        <Text style={styles.time}>{formatTime(currentTime)}</Text>
-        {duration > 0 && <Text style={styles.timeSep}> / </Text>}
-        {duration > 0 && <Text style={styles.time}>{formatTime(duration)}</Text>}
+        <Text style={[styles.time, { color: T.textSecondary }]}>{formatTime(currentTime)}</Text>
+        {duration > 0 && <Text style={[styles.timeSep, { color: T.textMuted }]}> / </Text>}
+        {duration > 0 && <Text style={[styles.time, { color: T.textSecondary }]}>{formatTime(duration)}</Text>}
       </View>
-      <Text style={styles.label}>Student Recording</Text>
+      <Text style={[styles.label, { color: T.textMuted }]}>Student Recording</Text>
     </View>
   );
 }
@@ -107,32 +115,29 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 12,
     gap: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
   playBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#1B4F72',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playIcon: { fontSize: 16, color: '#fff' },
+  playIcon: { fontSize: 16 },
   timeRow: { flexDirection: 'row', alignItems: 'center' },
-  time: { fontSize: 13, color: '#374151', fontVariant: ['tabular-nums'] },
-  timeSep: { fontSize: 13, color: '#9CA3AF' },
-  label: { fontSize: 12, color: '#9CA3AF', flex: 1, textAlign: 'right' },
-  error: { fontSize: 13, color: '#DC2626', flex: 1 },
+  time: { fontSize: 13, fontVariant: ['tabular-nums'] },
+  timeSep: { fontSize: 13 },
+  label: { fontSize: 12, flex: 1, textAlign: 'right' },
+  error: { fontSize: 13, flex: 1 },
   compactBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 10, paddingVertical: 6,
-    backgroundColor: '#F3F4F6', borderRadius: 8,
+    borderRadius: 8,
   },
-  compactIcon: { fontSize: 16, color: '#1B4F72' },
-  compactTime: { fontSize: 13, color: '#374151', fontVariant: ['tabular-nums'] },
+  compactIcon: { fontSize: 16 },
+  compactTime: { fontSize: 13, fontVariant: ['tabular-nums'] },
 });

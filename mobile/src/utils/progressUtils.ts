@@ -1,5 +1,4 @@
 import type { StudentProgressSummary } from '@/types/api';
-import { C } from '@/constants/colors';
 
 export type CurrentFocus =
   | { type: 'juz';  juzNumber: number;   pagesCompleted: number; pagesAssigned: number }
@@ -70,24 +69,3 @@ export const STATUS_LABELS: Record<string, string> = {
   archived:          'Archived',
 };
 
-export const STATUS_COLORS: Record<string, string> = {
-  not_started:       C.grayLight,
-  draft:             C.gray,
-  submitted:         C.amber,
-  in_review:         C.amber,
-  reviewed:          C.purple,
-  needs_resubmission:C.red,
-  completed:         C.green,
-  archived:          C.grayLight,
-};
-
-export const STATUS_BG_COLORS: Record<string, string> = {
-  not_started:       C.grayBg,
-  draft:             C.grayBg,
-  submitted:         C.amberBg,
-  in_review:         C.amberBg,
-  reviewed:          C.purpleBg,
-  needs_resubmission:C.redBg,
-  completed:         C.greenBg,
-  archived:          C.grayBg,
-};

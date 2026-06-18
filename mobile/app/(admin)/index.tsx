@@ -12,6 +12,7 @@ import { getUnassignedStudents } from '@/api/admin';
 import type { UnassignedStudentRow } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
+import { useTheme } from '@/hooks/useTheme';
 
 function relativeDate(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -28,18 +29,26 @@ function RequestCard({
   item: UnassignedStudentRow;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
+  const chip = theme.chips.submitted; // "Pending Assignment" maps closest to submitted styling
+
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[styles.card, { backgroundColor: T.surface, borderColor: T.border }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       <View style={styles.cardHeader}>
-        <Text style={styles.name}>{item.displayName}</Text>
-        <Text style={styles.date}>{relativeDate(item.createdAt)}</Text>
+        <Text style={[styles.name, { color: T.textPrimary }]}>{item.displayName}</Text>
+        <Text style={[styles.date, { color: T.textMuted }]}>{relativeDate(item.createdAt)}</Text>
       </View>
-      <Text style={styles.email}>{item.email}</Text>
+      <Text style={[styles.email, { color: T.textMuted }]}>{item.email}</Text>
       <View style={styles.cardFooter}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>Pending Assignment</Text>
+        <View style={[styles.badge, { backgroundColor: chip.bg }]}>
+          <Text style={[styles.badgeText, { color: chip.text }]}>Pending Assignment</Text>
         </View>
-        <Text style={styles.chevron}>Assign ›</Text>
+        <Text style={[styles.chevron, { color: T.brandPrimary }]}>Assign ›</Text>
       </View>
     </TouchableOpacity>
   );
@@ -51,6 +60,8 @@ export default function AdminRequestsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const T = theme.colors;
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -73,7 +84,7 @@ export default function AdminRequestsScreen() {
 
   return (
     <FlatList
-      style={styles.list}
+      style={[styles.list, { backgroundColor: T.backgroundAlt }]}
       contentContainerStyle={students.length === 0 ? styles.emptyContainer : styles.content}
       data={students}
       keyExtractor={(item) => item.requestId}
@@ -100,8 +111,8 @@ export default function AdminRequestsScreen() {
       )}
       ListEmptyComponent={
         <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No Pending Requests</Text>
-          <Text style={styles.emptyBody}>
+          <Text style={[styles.emptyTitle, { color: T.textSecondary }]}>No Pending Requests</Text>
+          <Text style={[styles.emptyBody, { color: T.textMuted }]}>
             All students have been assigned to a teacher.
           </Text>
         </View>
@@ -111,31 +122,28 @@ export default function AdminRequestsScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: '#F8F9FA' },
+  list: { flex: 1 },
   content: { padding: 16, gap: 12 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   card: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
     gap: 6,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  date: { fontSize: 12, color: '#9CA3AF' },
-  email: { fontSize: 13, color: '#6B7280' },
+  name: { fontSize: 16, fontWeight: '700' },
+  date: { fontSize: 12 },
+  email: { fontSize: 13 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   badge: {
-    backgroundColor: '#FEF3C7',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
   },
-  badgeText: { fontSize: 12, fontWeight: '600', color: '#92400E' },
-  chevron: { fontSize: 13, color: '#1B4F72', fontWeight: '600' },
+  badgeText: { fontSize: 12, fontWeight: '600' },
+  chevron: { fontSize: 13, fontWeight: '600' },
   empty: { alignItems: 'center', gap: 8 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151' },
-  emptyBody: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
+  emptyTitle: { fontSize: 18, fontWeight: '700' },
+  emptyBody: { fontSize: 14, textAlign: 'center' },
 });

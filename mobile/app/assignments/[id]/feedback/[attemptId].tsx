@@ -18,6 +18,7 @@ import { getQuranPage } from '@/api/quran';
 import AnnotationCanvas from '@/components/AnnotationCanvas';
 import AudioPlayerBar from '@/components/AudioPlayerBar';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
+import { useTheme } from '@/hooks/useTheme';
 import type { AnnotationRow, ReviewVoiceNoteRow } from '@/types/api';
 
 const MISTAKE_LABEL_COLORS: Record<string, string> = {
@@ -43,10 +44,12 @@ function AnnotationDetailPopup({
   annotation: AnnotationRow;
   onClose: () => void;
 }) {
+  const theme = useTheme('dark');
+  const T = theme.colors;
   const insets = useSafeAreaInsets();
   const color = annotation.mistakeType
-    ? (MISTAKE_LABEL_COLORS[annotation.mistakeType] ?? '#6B7280')
-    : '#1B4F72';
+    ? (MISTAKE_LABEL_COLORS[annotation.mistakeType] ?? T.textMuted)
+    : T.brandPrimary;
   const label = annotation.quickLabel
     ?? (annotation.mistakeType ? MISTAKE_DISPLAY_NAMES[annotation.mistakeType] : null);
 
@@ -75,20 +78,20 @@ function AnnotationDetailPopup({
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <View style={popupStyles.overlay}>
-        <View style={[popupStyles.sheet, { paddingBottom: insets.bottom + 8 }]}>
-          <View style={popupStyles.handle} />
-          <View style={popupStyles.header}>
+      <View style={[popupStyles.overlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+        <View style={[popupStyles.sheet, { backgroundColor: T.surface, paddingBottom: insets.bottom + 8 }]}>
+          <View style={[popupStyles.handle, { backgroundColor: T.border }]} />
+          <View style={[popupStyles.header, { borderBottomColor: T.divider }]}>
             <View style={[popupStyles.colorBar, { backgroundColor: color }]} />
-            <Text style={popupStyles.title}>Teacher's Note</Text>
+            <Text style={[popupStyles.title, { color: T.textPrimary }]}>Teacher's Note</Text>
             <TouchableOpacity onPress={onClose} style={popupStyles.closeBtn}>
-              <Text style={popupStyles.closeBtnText}>✕</Text>
+              <Text style={[popupStyles.closeBtnText, { color: T.textMuted }]}>✕</Text>
             </TouchableOpacity>
           </View>
 
           {!hasContent ? (
             <View style={popupStyles.emptyBody}>
-              <Text style={popupStyles.emptyText}>Freehand mark — no note added</Text>
+              <Text style={[popupStyles.emptyText, { color: T.textDisabled }]}>Freehand mark — no note added</Text>
             </View>
           ) : (
             <View style={popupStyles.body}>
@@ -97,12 +100,18 @@ function AnnotationDetailPopup({
                   <Text style={[popupStyles.chipText, { color }]}>{label}</Text>
                 </View>
               )}
-              {annotation.noteText && <Text style={popupStyles.noteText}>{annotation.noteText}</Text>}
+              {annotation.noteText && (
+                <Text style={[popupStyles.noteText, { color: T.textSecondary }]}>{annotation.noteText}</Text>
+              )}
               {annotation.hasVoiceNote && (
-                <TouchableOpacity style={popupStyles.voiceBtn} onPress={handlePlayVoiceNote} disabled={loadingVoice}>
+                <TouchableOpacity
+                  style={[popupStyles.voiceBtn, { backgroundColor: T.infoBg, borderColor: T.info }]}
+                  onPress={handlePlayVoiceNote}
+                  disabled={loadingVoice}
+                >
                   {loadingVoice
-                    ? <ActivityIndicator size="small" color="#1D4ED8" />
-                    : <Text style={popupStyles.voiceBtnText}>
+                    ? <ActivityIndicator size="small" color={T.info} />
+                    : <Text style={[popupStyles.voiceBtnText, { color: T.info }]}>
                         {playerStatus.playing ? '⏸  Pause Voice Note' : '▶  Play Voice Note'}
                       </Text>
                   }
@@ -111,8 +120,11 @@ function AnnotationDetailPopup({
             </View>
           )}
 
-          <TouchableOpacity style={[popupStyles.doneBtn, { marginHorizontal: 16 }]} onPress={onClose}>
-            <Text style={popupStyles.doneBtnText}>Close</Text>
+          <TouchableOpacity
+            style={[popupStyles.doneBtn, { backgroundColor: T.brandPrimary, marginHorizontal: 16 }]}
+            onPress={onClose}
+          >
+            <Text style={[popupStyles.doneBtnText, { color: T.brandOnPrimary }]}>Close</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -123,6 +135,8 @@ function AnnotationDetailPopup({
 // ── Main screen ────────────────────────────────────────────────────────────
 
 export default function FeedbackViewerScreen() {
+  const theme = useTheme('dark');
+  const T = theme.colors;
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id, attemptId, submissionId, pageNumber, attemptNumber } = useLocalSearchParams<{
@@ -209,17 +223,17 @@ export default function FeedbackViewerScreen() {
   );
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={[styles.root, { backgroundColor: T.background, paddingTop: insets.top }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* ── Top bar ── */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { backgroundColor: T.surface, borderBottomColor: T.border }]}>
         <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()}>
-          <Text style={styles.topBarBtnText}>‹</Text>
+          <Text style={[styles.topBarBtnText, { color: T.brandPrimary }]}>‹</Text>
         </TouchableOpacity>
         <View style={styles.topBarCenter}>
-          <Text style={styles.topBarTitle}>Teacher Feedback</Text>
-          <Text style={styles.topBarSub}>
+          <Text style={[styles.topBarTitle, { color: T.textPrimary }]}>Teacher Feedback</Text>
+          <Text style={[styles.topBarSub, { color: T.textMuted }]}>
             Page {pageNumber ?? '?'}{attemptNumber ? ` · Attempt ${attemptNumber}` : ''}
           </Text>
         </View>
@@ -228,7 +242,7 @@ export default function FeedbackViewerScreen() {
 
       {/* ── Canvas area ── */}
       <View
-        style={styles.canvasArea}
+        style={[styles.canvasArea, { backgroundColor: T.backgroundAlt }]}
         onLayout={(e) => setCanvasSize({
           width: e.nativeEvent.layout.width,
           height: e.nativeEvent.layout.height,
@@ -236,13 +250,13 @@ export default function FeedbackViewerScreen() {
       >
         {!pageImageUrl && (
           <View style={styles.pagePlaceholder}>
-            <Text style={styles.pagePlaceholderText}>Page unavailable</Text>
+            <Text style={[styles.pagePlaceholderText, { color: T.textDisabled }]}>Page unavailable</Text>
           </View>
         )}
 
         {loadingAnnotations && (
           <View style={styles.canvasLoading}>
-            <ActivityIndicator color="#1B4F72" />
+            <ActivityIndicator color={T.brandPrimary} />
           </View>
         )}
 
@@ -262,26 +276,28 @@ export default function FeedbackViewerScreen() {
         {/* Tap hint — sits inside the canvas, below the top bar */}
         {!loadingAnnotations && annotations.length > 0 && (
           <View style={styles.tapHintBar}>
-            <Text style={styles.tapHintText}>Tap a dot to see feedback</Text>
+            <Text style={[styles.tapHintText, { color: T.textSecondary, backgroundColor: T.surfaceOverlay, borderColor: T.border }]}>
+              Tap a dot to see feedback
+            </Text>
           </View>
         )}
       </View>
 
       {/* ── Bottom bar ── */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+      <View style={[styles.bottomBar, { backgroundColor: T.surface, borderTopColor: T.border, paddingBottom: insets.bottom + 8 }]}>
         <View style={styles.bottomSection}>
           <AudioPlayerBar submissionId={submissionId} attemptId={attemptId} compact />
         </View>
 
         {reviewVoiceNote && (
           <TouchableOpacity style={styles.rvnMsgBtn} onPress={handlePlayRvn}>
-            <Text style={styles.rvnMsgIcon}>{rvnPlayerStatus.playing ? '⏸' : '🎙'}</Text>
-            <Text style={styles.rvnMsgLabel}>Message</Text>
+            <Text style={[styles.rvnMsgIcon, { color: T.brandPrimary }]}>{rvnPlayerStatus.playing ? '⏸' : '🎙'}</Text>
+            <Text style={[styles.rvnMsgLabel, { color: T.textMuted }]}>Message</Text>
           </TouchableOpacity>
         )}
 
         {!loadingAnnotations && (
-          <Text style={styles.annotationCount}>
+          <Text style={[styles.annotationCount, { color: T.textDisabled }]}>
             {annotations.length === 0
               ? 'No marks'
               : `${annotations.length} mark${annotations.length !== 1 ? 's' : ''}`}
@@ -289,11 +305,11 @@ export default function FeedbackViewerScreen() {
         )}
 
         <TouchableOpacity
-          style={[styles.menuBtn, labelledAnnotations.length === 0 && styles.menuBtnDisabled]}
+          style={[styles.menuBtn, { backgroundColor: T.divider }, labelledAnnotations.length === 0 && styles.menuBtnDisabled]}
           onPress={() => setNotesOpen(true)}
           disabled={labelledAnnotations.length === 0}
         >
-          <Text style={styles.menuBtnText}>···</Text>
+          <Text style={[styles.menuBtnText, { color: T.textSecondary }]}>···</Text>
         </TouchableOpacity>
       </View>
 
@@ -305,39 +321,42 @@ export default function FeedbackViewerScreen() {
         onRequestClose={() => setNotesOpen(false)}
       >
         <TouchableOpacity
-          style={styles.sheetOverlay}
+          style={[styles.sheetOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
           activeOpacity={1}
           onPress={() => setNotesOpen(false)}
         >
-          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Feedback Notes</Text>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.sheet, { backgroundColor: T.surface, paddingBottom: insets.bottom + 8 }]}
+          >
+            <View style={[styles.sheetHandle, { backgroundColor: T.border }]} />
+            <Text style={[styles.sheetTitle, { color: T.textPrimary }]}>Feedback Notes</Text>
             <ScrollView style={{ maxHeight: 420 }}>
               {labelledAnnotations.length === 0 ? (
-                <Text style={styles.sheetEmpty}>No labelled annotations on this attempt.</Text>
+                <Text style={[styles.sheetEmpty, { color: T.textDisabled }]}>No labelled annotations on this attempt.</Text>
               ) : (
                 labelledAnnotations.map((ann, i) => {
                   const color = ann.mistakeType
-                    ? (MISTAKE_LABEL_COLORS[ann.mistakeType] ?? '#6B7280')
-                    : '#1B4F72';
+                    ? (MISTAKE_LABEL_COLORS[ann.mistakeType] ?? T.textMuted)
+                    : T.brandPrimary;
                   const label = ann.quickLabel
                     ?? (ann.mistakeType ? MISTAKE_DISPLAY_NAMES[ann.mistakeType] : null);
                   return (
                     <TouchableOpacity
                       key={ann.id}
-                      style={styles.noteRow}
+                      style={[styles.noteRow, { borderTopColor: T.divider }]}
                       onPress={() => { setNotesOpen(false); setSelectedAnnotation(ann); }}
                     >
                       <View style={[styles.noteIndex, { backgroundColor: color }]}>
-                        <Text style={styles.noteIndexText}>{i + 1}</Text>
+                        <Text style={[styles.noteIndexText, { color: T.surface }]}>{i + 1}</Text>
                       </View>
                       <View style={styles.noteBody}>
                         {label && <Text style={[styles.noteLabel, { color }]}>{label}</Text>}
-                        {ann.noteText && <Text style={styles.noteText}>{ann.noteText}</Text>}
-                        {!label && !ann.noteText && <Text style={styles.noteText}>Freehand mark</Text>}
-                        {ann.hasVoiceNote && <Text style={styles.voiceTag}>🎙 Voice note</Text>}
+                        {ann.noteText && <Text style={[styles.noteText, { color: T.textMuted }]}>{ann.noteText}</Text>}
+                        {!label && !ann.noteText && <Text style={[styles.noteText, { color: T.textMuted }]}>Freehand mark</Text>}
+                        {ann.hasVoiceNote && <Text style={[styles.voiceTag, { color: T.info }]}>🎙 Voice note</Text>}
                       </View>
-                      <Text style={styles.noteChevron}>›</Text>
+                      <Text style={[styles.noteChevron, { color: T.borderStrong }]}>›</Text>
                     </TouchableOpacity>
                   );
                 })
@@ -359,28 +378,28 @@ export default function FeedbackViewerScreen() {
 }
 
 const popupStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 4 },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8 },
+  handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 10, borderBottomWidth: 1 },
   colorBar: { width: 4, height: 20, borderRadius: 2 },
-  title: { fontSize: 16, fontWeight: '700', color: '#111827', flex: 1 },
+  title: { fontSize: 16, fontWeight: '700', flex: 1 },
   closeBtn: { padding: 4 },
-  closeBtnText: { fontSize: 18, color: '#6B7280' },
+  closeBtnText: { fontSize: 18 },
   emptyBody: { padding: 24, alignItems: 'center' },
-  emptyText: { fontSize: 14, color: '#9CA3AF' },
+  emptyText: { fontSize: 14 },
   body: { padding: 16, gap: 12 },
   chip: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
   chipText: { fontSize: 14, fontWeight: '700' },
-  noteText: { fontSize: 15, color: '#374151', lineHeight: 22 },
-  voiceBtn: { backgroundColor: '#EFF6FF', borderRadius: 10, borderWidth: 1, borderColor: '#BFDBFE', paddingVertical: 12, alignItems: 'center' },
-  voiceBtnText: { fontSize: 14, fontWeight: '600', color: '#1D4ED8' },
-  doneBtn: { paddingVertical: 13, alignItems: 'center', borderRadius: 12, backgroundColor: '#1B4F72', marginTop: 4 },
-  doneBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  noteText: { fontSize: 15, lineHeight: 22 },
+  voiceBtn: { borderRadius: 10, borderWidth: 1, paddingVertical: 12, alignItems: 'center' },
+  voiceBtnText: { fontSize: 14, fontWeight: '600' },
+  doneBtn: { paddingVertical: 13, alignItems: 'center', borderRadius: 12, marginTop: 4 },
+  doneBtnText: { fontSize: 15, fontWeight: '700' },
 });
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
+  root: { flex: 1 },
 
   // Top bar — matches teacher review and student assignment screens
   topBar: {
@@ -388,24 +407,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 52,
     paddingHorizontal: 4,
-    backgroundColor: '#fff',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E7EB',
   },
   topBarBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  topBarBtnText: { fontSize: 28, color: '#1B4F72', lineHeight: 32 },
+  topBarBtnText: { fontSize: 28, lineHeight: 32 },
   topBarCenter: { flex: 1, alignItems: 'center' },
-  topBarTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  topBarSub: { fontSize: 12, color: '#6B7280', marginTop: 1 },
+  topBarTitle: { fontSize: 15, fontWeight: '700' },
+  topBarSub: { fontSize: 12, marginTop: 1 },
 
   // Canvas area — flex: 1 between bars, same as teacher screen
   canvasArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
     overflow: 'hidden',
   },
   pagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  pagePlaceholderText: { fontSize: 13, color: '#9CA3AF' },
+  pagePlaceholderText: { fontSize: 13 },
   canvasLoading: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
@@ -413,14 +429,11 @@ const styles = StyleSheet.create({
   tapHintBar: { position: 'absolute', top: 10, left: 0, right: 0, alignItems: 'center' },
   tapHintText: {
     fontSize: 12,
-    color: '#374151',
-    backgroundColor: 'rgba(255,255,255,0.88)',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 10,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E5E7EB',
   },
 
   // Bottom bar — matches teacher review and student assignment screens
@@ -430,37 +443,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     gap: 10,
-    backgroundColor: '#fff',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
   },
   bottomSection: { flex: 1 },
-  annotationCount: { fontSize: 12, color: '#9CA3AF' },
+  annotationCount: { fontSize: 12 },
   menuBtn: {
     width: 38, height: 38, alignItems: 'center', justifyContent: 'center',
-    borderRadius: 10, backgroundColor: '#F3F4F6',
+    borderRadius: 10,
   },
   menuBtnDisabled: { opacity: 0.4 },
-  menuBtnText: { fontSize: 18, color: '#374151', letterSpacing: 1 },
+  menuBtnText: { fontSize: 18, letterSpacing: 1 },
   rvnMsgBtn: { alignItems: 'center', gap: 2 },
-  rvnMsgIcon: { fontSize: 18, color: '#1B4F72' },
-  rvnMsgLabel: { fontSize: 10, color: '#6B7280', fontWeight: '600', letterSpacing: 0.3 },
+  rvnMsgIcon: { fontSize: 18 },
+  rvnMsgLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3 },
 
   // Notes sheet
-  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12 },
-  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 12 },
-  sheetTitle: { fontSize: 16, fontWeight: '700', color: '#111827', paddingHorizontal: 20, marginBottom: 8 },
-  sheetEmpty: { fontSize: 14, color: '#9CA3AF', padding: 20, textAlign: 'center' },
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
+  sheetTitle: { fontSize: 16, fontWeight: '700', paddingHorizontal: 20, marginBottom: 8 },
+  sheetEmpty: { fontSize: 14, padding: 20, textAlign: 'center' },
   noteRow: {
     flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingVertical: 13,
-    borderTopWidth: 1, borderTopColor: '#F3F4F6', alignItems: 'center',
+    borderTopWidth: 1, alignItems: 'center',
   },
   noteIndex: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  noteIndexText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  noteIndexText: { fontSize: 11, fontWeight: '700' },
   noteBody: { flex: 1, gap: 2 },
   noteLabel: { fontSize: 14, fontWeight: '600' },
-  noteText: { fontSize: 13, color: '#6B7280', lineHeight: 18 },
-  voiceTag: { fontSize: 12, color: '#1D4ED8' },
-  noteChevron: { fontSize: 18, color: '#D1D5DB' },
+  noteText: { fontSize: 13, lineHeight: 18 },
+  voiceTag: { fontSize: 12 },
+  noteChevron: { fontSize: 18 },
 });

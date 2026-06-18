@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getTeacherAllSubmissions, getTeacherReviewQueue } from '@/api/teacher';
-import { C } from '@/constants/colors';
+import { useTheme } from '@/hooks/useTheme';
 import type { TeacherQueueItem } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
@@ -24,22 +24,6 @@ const SUBMISSION_STATUS_LABELS: Record<string, string> = {
   completed:          'Completed',
 };
 
-const SUBMISSION_STATUS_COLORS: Record<string, string> = {
-  submitted:          C.amber,
-  in_review:          C.blue,
-  reviewed:           C.purple,
-  needs_resubmission: C.red,
-  completed:          C.green,
-};
-
-const SUBMISSION_STATUS_BG: Record<string, string> = {
-  submitted:          C.amberBg,
-  in_review:          C.blueBg,
-  reviewed:           C.purpleBg,
-  needs_resubmission: C.redBg,
-  completed:          C.greenBg,
-};
-
 function relativeDate(iso: string | null): string {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
@@ -50,10 +34,11 @@ function relativeDate(iso: string | null): string {
 }
 
 function QueueCard({ item, onPress }: { item: TeacherQueueItem; onPress: () => void }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const status = item.submissionStatus ?? item.status;
   const label  = SUBMISSION_STATUS_LABELS[status] ?? status;
-  const color  = SUBMISSION_STATUS_COLORS[status] ?? C.gray;
-  const bg     = SUBMISSION_STATUS_BG[status] ?? C.grayBg;
+  const chip   = theme.chips[status as keyof typeof theme.chips] ?? { bg: T.backgroundAlt, text: T.textMuted };
   const attemptLabel = item.attemptNumber != null && item.attemptNumber > 1
     ? `Attempt ${item.attemptNumber}`
     : 'First attempt';
@@ -61,24 +46,24 @@ function QueueCard({ item, onPress }: { item: TeacherQueueItem; onPress: () => v
 
   return (
     <TouchableOpacity
-      style={[styles.card, !canOpen && styles.cardDim]}
+      style={[styles.card, { backgroundColor: T.surface }, !canOpen && styles.cardDim]}
       onPress={onPress}
       activeOpacity={canOpen ? 0.7 : 1}
       disabled={!canOpen}
     >
       <View style={styles.cardTop}>
-        <Text style={styles.studentName}>{item.studentName}</Text>
-        <Text style={styles.dateText}>{relativeDate(item.submittedAt ?? item.updatedAt)}</Text>
+        <Text style={[styles.studentName, { color: T.textPrimary }]}>{item.studentName}</Text>
+        <Text style={[styles.dateText, { color: T.textMuted }]}>{relativeDate(item.submittedAt ?? item.updatedAt)}</Text>
       </View>
-      <Text style={styles.pageText}>
+      <Text style={[styles.pageText, { color: T.textSecondary }]}>
         Page {item.pageNumber ?? '?'}{item.title ? ` — ${item.title}` : ''}
       </Text>
       <View style={styles.cardBottom}>
-        <View style={[styles.statusBadge, { backgroundColor: bg }]}>
-          <Text style={[styles.statusText, { color }]}>{label}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: chip.bg }]}>
+          <Text style={[styles.statusText, { color: chip.text }]}>{label}</Text>
         </View>
-        <Text style={[styles.attemptLabel, { color: C.textMuted }]}>{attemptLabel}</Text>
-        {canOpen && <Text style={styles.chevron}>›</Text>}
+        <Text style={[styles.attemptLabel, { color: T.textMuted }]}>{attemptLabel}</Text>
+        {canOpen && <Text style={[styles.chevron, { color: T.textMuted }]}>›</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -89,8 +74,10 @@ function FilterBar({ active, onChange, counts }: {
   onChange: (f: Filter) => void;
   counts: { needs_review: number; all: number };
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
   return (
-    <View style={styles.filterBar}>
+    <View style={[styles.filterBar, { backgroundColor: T.surface, borderBottomColor: T.border }]}>
       {(['needs_review', 'all'] as Filter[]).map((f) => {
         const isActive = active === f;
         const label = f === 'needs_review' ? 'Needs Review' : 'All Recent';
@@ -98,11 +85,17 @@ function FilterBar({ active, onChange, counts }: {
         return (
           <TouchableOpacity
             key={f}
-            style={[styles.filterBtn, isActive && styles.filterBtnActive]}
+            style={[
+              styles.filterBtn,
+              { backgroundColor: isActive ? T.brandPrimary : T.backgroundAlt },
+            ]}
             onPress={() => onChange(f)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+            <Text style={[
+              styles.filterText,
+              { color: isActive ? T.brandOnPrimary : T.textMuted },
+            ]}>
               {label}
               {count > 0 ? `  ${count}` : ''}
             </Text>
@@ -115,6 +108,8 @@ function FilterBar({ active, onChange, counts }: {
 
 export default function QueueScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const T = theme.colors;
   const [filter, setFilter]       = useState<Filter>('needs_review');
   const [pendingItems, setPending] = useState<TeacherQueueItem[]>([]);
   const [allItems, setAll]         = useState<TeacherQueueItem[]>([]);
@@ -165,7 +160,7 @@ export default function QueueScreen() {
   const items = filter === 'needs_review' ? pendingItems : allItems;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: T.backgroundAlt }]}>
       <FilterBar
         active={filter}
         onChange={setFilter}
@@ -177,15 +172,15 @@ export default function QueueScreen() {
         data={items}
         keyExtractor={(item) => item.id}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.blue} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={T.brandPrimary} />
         }
         renderItem={({ item }) => <QueueCard item={item} onPress={() => handlePress(item)} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>
+            <Text style={[styles.emptyTitle, { color: T.brandPrimary }]}>
               {filter === 'needs_review' ? 'All caught up!' : 'No submissions yet'}
             </Text>
-            <Text style={styles.emptyBody}>
+            <Text style={[styles.emptyBody, { color: T.textMuted }]}>
               {filter === 'needs_review'
                 ? 'No pending submissions. Check "All Recent" to see past reviews.'
                 : 'Submissions will appear here once students start recording.'}
@@ -198,13 +193,11 @@ export default function QueueScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.surface },
+  container: { flex: 1 },
 
   filterBar: {
     flexDirection: 'row',
-    backgroundColor: C.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 8,
@@ -213,18 +206,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: C.grayBg,
   },
-  filterBtnActive: { backgroundColor: C.blue },
-  filterText:      { fontSize: 13, fontWeight: '600', color: C.textMuted },
-  filterTextActive:{ color: C.white },
+  filterText: { fontSize: 13, fontWeight: '600' },
 
   list: { flex: 1 },
   listContent: { padding: 16, gap: 10 },
   emptyWrap:   { flex: 1 },
 
   card: {
-    backgroundColor: C.white,
     borderRadius: 14,
     padding: 14,
     shadowColor: '#000',
@@ -236,16 +225,16 @@ const styles = StyleSheet.create({
   },
   cardDim: { opacity: 0.6 },
   cardTop:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  studentName: { fontSize: 15, fontWeight: '700', color: C.text },
-  dateText:    { fontSize: 12, color: C.grayLight },
-  pageText:    { fontSize: 13, color: C.textSub },
+  studentName: { fontSize: 15, fontWeight: '700' },
+  dateText:    { fontSize: 12 },
+  pageText:    { fontSize: 13 },
   cardBottom:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusText:  { fontSize: 11, fontWeight: '700' },
   attemptLabel:{ fontSize: 11, flex: 1 },
-  chevron:     { fontSize: 20, color: C.grayLight },
+  chevron:     { fontSize: 20 },
 
   empty:      { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.blue, textAlign: 'center' },
-  emptyBody:  { fontSize: 14, color: C.textMuted, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  emptyBody:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 });

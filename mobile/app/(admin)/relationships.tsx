@@ -12,12 +12,13 @@ import { getRelationships, updateRelationship } from '@/api/admin';
 import type { AdminRelationshipRow } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
+import { useTheme } from '@/hooks/useTheme';
 
-const STATUS_COLORS: Record<string, string> = {
-  active: '#059669',
-  inactive: '#9CA3AF',
-  pending: '#D97706',
-};
+function statusColor(status: string, T: ReturnType<typeof useTheme>['colors']): string {
+  if (status === 'active') return T.success;
+  if (status === 'pending') return T.warning;
+  return T.textMuted;
+}
 
 function RelationshipCard({
   item,
@@ -26,26 +27,33 @@ function RelationshipCard({
   item: AdminRelationshipRow;
   onToggle: () => void;
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const isActive = item.status === 'active';
+  const dotColor = statusColor(item.status, T);
+
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: T.surface, borderColor: T.border }]}>
       <View style={styles.cardBody}>
         <View style={styles.row}>
-          <Text style={styles.label}>Teacher</Text>
-          <Text style={styles.value}>{item.teacherName}</Text>
+          <Text style={[styles.label, { color: T.textMuted }]}>Teacher</Text>
+          <Text style={[styles.value, { color: T.textPrimary }]}>{item.teacherName}</Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.label}>Student</Text>
-          <Text style={styles.value}>{item.studentName}</Text>
+          <Text style={[styles.label, { color: T.textMuted }]}>Student</Text>
+          <Text style={[styles.value, { color: T.textPrimary }]}>{item.studentName}</Text>
         </View>
       </View>
       <View style={styles.cardFooter}>
-        <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] ?? '#9CA3AF' }]} />
-        <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] ?? '#9CA3AF' }]}>
+        <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
+        <Text style={[styles.statusText, { color: dotColor }]}>
           {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
         </Text>
-        <TouchableOpacity style={styles.toggleBtn} onPress={onToggle}>
-          <Text style={styles.toggleBtnText}>
+        <TouchableOpacity
+          style={[styles.toggleBtn, { backgroundColor: T.backgroundAlt }]}
+          onPress={onToggle}
+        >
+          <Text style={[styles.toggleBtnText, { color: T.textSecondary }]}>
             {isActive ? 'Deactivate' : 'Reactivate'}
           </Text>
         </TouchableOpacity>
@@ -59,6 +67,8 @@ export default function RelationshipsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const T = theme.colors;
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -107,7 +117,7 @@ export default function RelationshipsScreen() {
 
   return (
     <FlatList
-      style={styles.list}
+      style={[styles.list, { backgroundColor: T.backgroundAlt }]}
       contentContainerStyle={relationships.length === 0 ? styles.emptyContainer : styles.content}
       data={relationships}
       keyExtractor={(r) => r.id}
@@ -122,8 +132,8 @@ export default function RelationshipsScreen() {
       )}
       ListEmptyComponent={
         <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No Relationships</Text>
-          <Text style={styles.emptyBody}>No teacher-student pairs exist yet.</Text>
+          <Text style={[styles.emptyTitle, { color: T.textSecondary }]}>No Relationships</Text>
+          <Text style={[styles.emptyBody, { color: T.textMuted }]}>No teacher-student pairs exist yet.</Text>
         </View>
       }
     />
@@ -131,32 +141,29 @@ export default function RelationshipsScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: '#F8F9FA' },
+  list: { flex: 1 },
   content: { padding: 16, gap: 12 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   card: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
     gap: 10,
   },
   cardBody: { gap: 6 },
   row: { flexDirection: 'row', gap: 8 },
-  label: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', width: 56 },
-  value: { fontSize: 14, color: '#111827', flex: 1 },
+  label: { fontSize: 12, fontWeight: '600', width: 56 },
+  value: { fontSize: 14, flex: 1 },
   cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 13, fontWeight: '600', flex: 1 },
   toggleBtn: {
-    backgroundColor: '#F3F4F6',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
-  toggleBtnText: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  toggleBtnText: { fontSize: 13, fontWeight: '600' },
   empty: { alignItems: 'center', gap: 8 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151' },
-  emptyBody: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
+  emptyTitle: { fontSize: 18, fontWeight: '700' },
+  emptyBody: { fontSize: 14, textAlign: 'center' },
 });

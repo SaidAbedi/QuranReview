@@ -13,7 +13,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from '@/api/notifications';
-import { C } from '@/constants/colors';
+import { useTheme } from '@/hooks/useTheme';
 import type { NotificationRow } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
@@ -41,29 +41,42 @@ function relativeTime(iso: string): string {
 }
 
 function NotificationItem({ item, onPress }: { item: NotificationRow; onPress: () => void }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const icon = TYPE_ICONS[item.type] ?? '🔔';
   const isUnread = !item.readAt;
 
   return (
     <TouchableOpacity
-      style={[styles.item, isUnread && styles.itemUnread]}
+      style={[
+        styles.item,
+        { backgroundColor: isUnread ? T.brandPrimarySoft : T.surface },
+      ]}
       onPress={onPress}
       activeOpacity={isUnread ? 0.7 : 1}
     >
-      <View style={[styles.iconWrap, isUnread && styles.iconWrapUnread]}>
+      <View style={[
+        styles.iconWrap,
+        { backgroundColor: isUnread ? T.brandPrimarySoft : T.backgroundAlt },
+      ]}>
         <Text style={styles.icon}>{icon}</Text>
       </View>
       <View style={styles.itemContent}>
-        <Text style={[styles.itemTitle, isUnread && styles.itemTitleUnread]}>{item.title}</Text>
-        {item.body ? <Text style={styles.itemBody} numberOfLines={2}>{item.body}</Text> : null}
-        <Text style={styles.itemTime}>{relativeTime(item.createdAt)}</Text>
+        <Text style={[
+          styles.itemTitle,
+          { color: isUnread ? T.brandPrimary : T.textPrimary },
+        ]}>{item.title}</Text>
+        {item.body ? <Text style={[styles.itemBody, { color: T.textMuted }]} numberOfLines={2}>{item.body}</Text> : null}
+        <Text style={[styles.itemTime, { color: T.textMuted }]}>{relativeTime(item.createdAt)}</Text>
       </View>
-      {isUnread && <View style={styles.dot} />}
+      {isUnread && <View style={[styles.dot, { backgroundColor: T.brandPrimary }]} />}
     </TouchableOpacity>
   );
 }
 
 export default function TeacherNotificationsScreen() {
+  const theme = useTheme();
+  const T = theme.colors;
   const [items, setItems]             = useState<NotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading]         = useState(true);
@@ -110,12 +123,12 @@ export default function TeacherNotificationsScreen() {
   if (error)   return <ErrorScreen message={error} onRetry={() => load()} />;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: T.backgroundAlt }]}>
       {unreadCount > 0 && (
-        <View style={styles.toolbar}>
-          <Text style={styles.toolbarCount}>{unreadCount} unread</Text>
+        <View style={[styles.toolbar, { backgroundColor: T.surface, borderBottomColor: T.border }]}>
+          <Text style={[styles.toolbarCount, { color: T.textMuted }]}>{unreadCount} unread</Text>
           <TouchableOpacity onPress={handleMarkAllRead} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.markAllBtn}>Mark all read</Text>
+            <Text style={[styles.markAllBtn, { color: T.brandPrimary }]}>Mark all read</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -123,14 +136,14 @@ export default function TeacherNotificationsScreen() {
         data={items}
         keyExtractor={(item) => item.id}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={C.blue} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={T.brandPrimary} />
         }
         contentContainerStyle={items.length === 0 ? styles.emptyWrap : styles.list}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={() => <View style={[styles.separator, { backgroundColor: T.divider }]} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>All caught up</Text>
-            <Text style={styles.emptyBody}>No notifications yet.</Text>
+            <Text style={[styles.emptyTitle, { color: T.textPrimary }]}>All caught up</Text>
+            <Text style={[styles.emptyBody, { color: T.textMuted }]}>No notifications yet.</Text>
           </View>
         }
         renderItem={({ item }) => (
@@ -145,7 +158,7 @@ export default function TeacherNotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.surface },
+  container: { flex: 1 },
 
   toolbar: {
     flexDirection: 'row',
@@ -153,49 +166,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: C.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
   },
-  toolbarCount: { fontSize: 13, color: C.textMuted, fontWeight: '500' },
-  markAllBtn:   { fontSize: 13, color: C.blue, fontWeight: '700' },
+  toolbarCount: { fontSize: 13, fontWeight: '500' },
+  markAllBtn:   { fontSize: 13, fontWeight: '700' },
 
   list:     { paddingVertical: 8 },
   emptyWrap:{ flex: 1 },
-  separator:{ height: StyleSheet.hairlineWidth, backgroundColor: C.divider, marginLeft: 66 },
+  separator:{ height: StyleSheet.hairlineWidth, marginLeft: 66 },
 
   item: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: C.white,
     gap: 12,
   },
-  itemUnread: { backgroundColor: C.blueBg },
 
   iconWrap: {
     width: 38, height: 38, borderRadius: 19,
-    backgroundColor: C.grayBg,
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  iconWrapUnread: { backgroundColor: '#DBEAFE' },
   icon: { fontSize: 18 },
 
   itemContent:     { flex: 1, gap: 2 },
-  itemTitle:       { fontSize: 14, fontWeight: '600', color: C.text, lineHeight: 20 },
-  itemTitleUnread: { color: C.blue },
-  itemBody:        { fontSize: 13, color: C.textMuted, lineHeight: 18 },
-  itemTime:        { fontSize: 11, color: C.grayLight, marginTop: 2 },
+  itemTitle:       { fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  itemBody:        { fontSize: 13, lineHeight: 18 },
+  itemTime:        { fontSize: 11, marginTop: 2 },
 
   dot: {
     width: 8, height: 8, borderRadius: 4,
-    backgroundColor: C.blue,
     marginTop: 6, flexShrink: 0,
   },
 
   empty:      { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 6 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.text },
-  emptyBody:  { fontSize: 14, color: C.textMuted },
+  emptyTitle: { fontSize: 18, fontWeight: '700' },
+  emptyBody:  { fontSize: 14 },
 });

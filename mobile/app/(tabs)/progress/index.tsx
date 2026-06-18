@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getStudentProgress } from '@/api/progress';
-import { C } from '@/constants/colors';
+import { useTheme } from '@/hooks/useTheme';
 import { getSurahName } from '@/constants/quranData';
 import type { JuzSnapshotEntry, StudentProgressSummary, SurahSnapshotEntry } from '@/types/api';
 import {
@@ -25,44 +25,49 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen';
 
 function ProgressBar({
   percent,
-  color = C.blue,
+  color,
   height = 8,
 }: {
   percent: number;
-  color?: string;
+  color: string;
   height?: number;
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const pct = Math.min(100, Math.max(0, percent));
   return (
-    <View style={[bar.track, { height }]}>
+    <View style={[bar.track, { height, backgroundColor: T.border }]}>
       <View style={[bar.fill, { width: `${pct}%` as `${number}%`, backgroundColor: color, height }]} />
     </View>
   );
 }
 const bar = StyleSheet.create({
-  track: { backgroundColor: C.border, borderRadius: 4, overflow: 'hidden' },
+  track: { borderRadius: 4, overflow: 'hidden' },
   fill:  { borderRadius: 4 },
 });
 
 // ─── A. Current Focus card ────────────────────────────────────────────────────
 
 function CurrentFocusCard({ focus }: { focus: CurrentFocus }) {
+  const theme = useTheme();
+  const T = theme.colors;
+
   if (focus.type === 'no_assignments') {
     return (
-      <View style={[styles.focusCard, { borderLeftColor: C.grayLight }]}>
-        <Text style={styles.focusChip}>Getting Started</Text>
-        <Text style={styles.focusTitle}>Waiting for Assignment</Text>
-        <Text style={styles.focusSub}>Your teacher will assign your first page soon.</Text>
+      <View style={[styles.focusCard, { backgroundColor: T.surface, borderLeftColor: T.textMuted, shadowColor: T.shadow }]}>
+        <Text style={[styles.focusChip, { color: T.textMuted }]}>Getting Started</Text>
+        <Text style={[styles.focusTitle, { color: T.textPrimary }]}>Waiting for Assignment</Text>
+        <Text style={[styles.focusSub, { color: T.textMuted }]}>Your teacher will assign your first page soon.</Text>
       </View>
     );
   }
 
   if (focus.type === 'all_done') {
     return (
-      <View style={[styles.focusCard, { borderLeftColor: C.green }]}>
-        <Text style={[styles.focusChip, { color: C.green }]}>Well done!</Text>
-        <Text style={styles.focusTitle}>All pages complete!</Text>
-        <Text style={styles.focusSub}>Waiting for your next assignment.</Text>
+      <View style={[styles.focusCard, { backgroundColor: T.surface, borderLeftColor: T.success, shadowColor: T.shadow }]}>
+        <Text style={[styles.focusChip, { color: T.success }]}>Well done!</Text>
+        <Text style={[styles.focusTitle, { color: T.textPrimary }]}>All pages complete!</Text>
+        <Text style={[styles.focusSub, { color: T.textMuted }]}>Waiting for your next assignment.</Text>
       </View>
     );
   }
@@ -89,19 +94,19 @@ function CurrentFocusCard({ focus }: { focus: CurrentFocus }) {
   const msg = encouragingMessage(completed, assigned);
 
   return (
-    <View style={[styles.focusCard, { borderLeftColor: C.gold }]}>
-      <Text style={[styles.focusChip, { color: C.gold }]}>Current Focus</Text>
-      <Text style={styles.focusTitle}>{title}</Text>
-      <Text style={styles.focusSub}>
+    <View style={[styles.focusCard, { backgroundColor: T.surface, borderLeftColor: T.brandPrimary, shadowColor: T.shadow }]}>
+      <Text style={[styles.focusChip, { color: T.brandPrimary }]}>Current Focus</Text>
+      <Text style={[styles.focusTitle, { color: T.textPrimary }]}>{title}</Text>
+      <Text style={[styles.focusSub, { color: T.textMuted }]}>
         {completed} of {assigned} assigned page{assigned !== 1 ? 's' : ''} completed
       </Text>
       <View style={styles.focusBarRow}>
         <View style={{ flex: 1 }}>
-          <ProgressBar percent={pct} color={C.gold} height={6} />
+          <ProgressBar percent={pct} color={T.brandPrimary} height={6} />
         </View>
-        <Text style={styles.focusPct}>{pct}%</Text>
+        <Text style={[styles.focusPct, { color: T.brandPrimary }]}>{pct}%</Text>
       </View>
-      <Text style={styles.focusMsg}>{msg}</Text>
+      <Text style={[styles.focusMsg, { color: T.textMuted }]}>{msg}</Text>
     </View>
   );
 }
@@ -130,22 +135,25 @@ function StatusCard({
 // ─── C. Juz row ───────────────────────────────────────────────────────────────
 
 function JuzRow({ juz, onPress }: { juz: JuzSnapshotEntry; onPress: () => void }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const pct      = focusPercent(juz.pagesCompleted, juz.pagesAssigned);
   const complete = juz.pagesAssigned > 0 && juz.pagesCompleted >= juz.pagesAssigned;
+  const accentColor = complete ? T.success : T.brandPrimary;
   return (
     <TouchableOpacity style={styles.drillRow} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.drillLeft}>
-        <Text style={styles.drillTitle}>Juz {juz.juzNumber}</Text>
-        <Text style={styles.drillSub}>
+        <Text style={[styles.drillTitle, { color: T.textPrimary }]}>Juz {juz.juzNumber}</Text>
+        <Text style={[styles.drillSub, { color: T.textMuted }]}>
           {juz.pagesCompleted} / {juz.pagesAssigned} pages
         </Text>
         <View style={styles.drillBarWrap}>
-          <ProgressBar percent={pct} color={complete ? C.green : C.gold} height={4} />
+          <ProgressBar percent={pct} color={accentColor} height={4} />
         </View>
       </View>
       <View style={styles.drillRight}>
-        <Text style={[styles.drillPct, { color: complete ? C.green : C.gold }]}>{pct}%</Text>
-        <Text style={styles.drillChev}>›</Text>
+        <Text style={[styles.drillPct, { color: accentColor }]}>{pct}%</Text>
+        <Text style={[styles.drillChev, { color: T.textMuted }]}>›</Text>
       </View>
     </TouchableOpacity>
   );
@@ -154,24 +162,27 @@ function JuzRow({ juz, onPress }: { juz: JuzSnapshotEntry; onPress: () => void }
 // ─── D. Surah row ─────────────────────────────────────────────────────────────
 
 function SurahRow({ surah, onPress }: { surah: SurahSnapshotEntry; onPress: () => void }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const pct      = focusPercent(surah.pagesCompleted, surah.pagesAssigned);
   const complete = surah.pagesAssigned > 0 && surah.pagesCompleted >= surah.pagesAssigned;
+  const accentColor = complete ? T.success : T.brandPrimary;
   return (
     <TouchableOpacity style={styles.drillRow} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.drillLeft}>
-        <Text style={styles.drillTitle}>
+        <Text style={[styles.drillTitle, { color: T.textPrimary }]}>
           {surah.surahNumber}. {getSurahName(surah.surahNumber)}
         </Text>
-        <Text style={styles.drillSub}>
+        <Text style={[styles.drillSub, { color: T.textMuted }]}>
           {surah.pagesCompleted} / {surah.pagesAssigned} pages
         </Text>
         <View style={styles.drillBarWrap}>
-          <ProgressBar percent={pct} color={complete ? C.green : C.blue} height={4} />
+          <ProgressBar percent={pct} color={accentColor} height={4} />
         </View>
       </View>
       <View style={styles.drillRight}>
-        <Text style={[styles.drillPct, { color: complete ? C.green : C.blue }]}>{pct}%</Text>
-        <Text style={styles.drillChev}>›</Text>
+        <Text style={[styles.drillPct, { color: accentColor }]}>{pct}%</Text>
+        <Text style={[styles.drillChev, { color: T.textMuted }]}>›</Text>
       </View>
     </TouchableOpacity>
   );
@@ -180,25 +191,27 @@ function SurahRow({ surah, onPress }: { surah: SurahSnapshotEntry; onPress: () =
 // ─── E. Whole Quran card ──────────────────────────────────────────────────────
 
 function WholeQuranCard({ progress }: { progress: StudentProgressSummary }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const { pagesCompleted, totalPagesInQuran, overallCompletionPercent } = progress;
   const pct       = Math.min(100, Math.max(0, overallCompletionPercent ?? 0));
   const prominent = pagesCompleted >= 100;
 
   return (
-    <View style={styles.quranCard}>
-      <Text style={styles.quranTitle}>Your Quran Journey</Text>
+    <View style={[styles.quranCard, { backgroundColor: T.surface, shadowColor: T.shadow }]}>
+      <Text style={[styles.quranTitle, { color: T.textMuted }]}>Your Quran Journey</Text>
       {pagesCompleted < 10 ? (
-        <Text style={styles.quranHero}>
+        <Text style={[styles.quranHero, { color: T.textPrimary }]}>
           {pagesCompleted} page{pagesCompleted !== 1 ? 's' : ''} completed so far
         </Text>
       ) : (
-        <Text style={styles.quranHero}>
+        <Text style={[styles.quranHero, { color: T.textPrimary }]}>
           {pagesCompleted} / {totalPagesInQuran} pages
         </Text>
       )}
-      <ProgressBar percent={pct} color={C.blue} height={prominent ? 10 : 6} />
+      <ProgressBar percent={pct} color={T.brandPrimary} height={prominent ? 10 : 6} />
       {pagesCompleted >= 10 && (
-        <Text style={styles.quranPct}>{pct.toFixed(1)}% of the Quran</Text>
+        <Text style={[styles.quranPct, { color: T.textMuted }]}>{pct.toFixed(1)}% of the Quran</Text>
       )}
     </View>
   );
@@ -208,6 +221,8 @@ function WholeQuranCard({ progress }: { progress: StudentProgressSummary }) {
 
 export default function ProgressScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const T = theme.colors;
   const [progress, setProgress]   = useState<StudentProgressSummary | null>(null);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -236,7 +251,7 @@ export default function ProgressScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: T.backgroundAlt }]}
       contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl
@@ -253,31 +268,31 @@ export default function ProgressScreen() {
         <StatusCard
           label="Assigned"
           value={progress.pagesAssigned}
-          color={C.blue}
-          bg={C.blueBg}
+          color={T.brandPrimary}
+          bg={T.brandPrimarySoft}
         />
         <StatusCard
           label="Completed"
           value={progress.pagesCompleted}
-          color={C.green}
-          bg={C.greenBg}
+          color={T.success}
+          bg={T.successBg}
         />
         <StatusCard
           label="Needs Practice"
           value={progress.pagesNeedsResubmission ?? 0}
-          color={C.red}
-          bg={C.redBg}
+          color={T.error}
+          bg={T.errorBg}
         />
       </View>
 
       {/* C. Juz Progress */}
       {progress.juzBreakdown.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>By Juz</Text>
-          <View style={styles.sectionCard}>
+          <Text style={[styles.sectionTitle, { color: T.textPrimary }]}>By Juz</Text>
+          <View style={[styles.sectionCard, { backgroundColor: T.surface, shadowColor: T.shadow }]}>
             {progress.juzBreakdown.map((j, i) => (
               <View key={j.juzNumber}>
-                {i > 0 && <View style={styles.divider} />}
+                {i > 0 && <View style={[styles.divider, { backgroundColor: T.border }]} />}
                 <JuzRow
                   juz={j}
                   onPress={() =>
@@ -296,11 +311,11 @@ export default function ProgressScreen() {
       {/* D. Surah Progress */}
       {progress.surahBreakdown.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>By Surah</Text>
-          <View style={styles.sectionCard}>
+          <Text style={[styles.sectionTitle, { color: T.textPrimary }]}>By Surah</Text>
+          <View style={[styles.sectionCard, { backgroundColor: T.surface, shadowColor: T.shadow }]}>
             {progress.surahBreakdown.map((s, i) => (
               <View key={s.surahNumber}>
-                {i > 0 && <View style={styles.divider} />}
+                {i > 0 && <View style={[styles.divider, { backgroundColor: T.border }]} />}
                 <SurahRow
                   surah={s}
                   onPress={() =>
@@ -320,7 +335,7 @@ export default function ProgressScreen() {
       <WholeQuranCard progress={progress} />
 
       {progress.calculatedAt && (
-        <Text style={styles.updatedAt}>
+        <Text style={[styles.updatedAt, { color: T.textMuted }]}>
           Updated {new Date(progress.calculatedAt).toLocaleDateString()}
         </Text>
       )}
@@ -331,28 +346,26 @@ export default function ProgressScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.surface },
+  container: { flex: 1 },
   content:   { padding: 16, paddingBottom: 32 },
 
   // Focus card
   focusCard: {
-    backgroundColor: C.white,
     borderRadius: 14,
     padding: 16,
     marginBottom: 14,
     borderLeftWidth: 4,
-    shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 6,
     elevation: 2,
   },
-  focusChip:  { fontSize: 11, fontWeight: '700', color: C.gold, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
-  focusTitle: { fontSize: 22, fontWeight: '800', color: C.text, marginBottom: 4 },
-  focusSub:   { fontSize: 14, color: C.textMuted, marginBottom: 12 },
+  focusChip:  { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  focusTitle: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
+  focusSub:   { fontSize: 14, marginBottom: 12 },
   focusBarRow:{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  focusPct:   { fontSize: 14, fontWeight: '700', color: C.gold, minWidth: 36, textAlign: 'right' },
-  focusMsg:   { fontSize: 13, color: C.textMuted, fontStyle: 'italic' },
+  focusPct:   { fontSize: 14, fontWeight: '700', minWidth: 36, textAlign: 'right' },
+  focusMsg:   { fontSize: 13, fontStyle: 'italic' },
 
   // Status cards
   statusRow: {
@@ -372,44 +385,40 @@ const styles = StyleSheet.create({
 
   // Sections
   section:      { marginBottom: 20 },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: C.text, marginBottom: 8 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 8 },
   sectionCard:  {
-    backgroundColor: C.white,
     borderRadius: 14,
     overflow: 'hidden',
-    shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowOffset: { width: 0, height: 1 },
     shadowRadius: 4,
     elevation: 1,
   },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.border, marginHorizontal: 16 },
+  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
 
   // Drill-down rows
   drillRow:    { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
   drillLeft:   { flex: 1 },
-  drillTitle:  { fontSize: 14, fontWeight: '600', color: C.text, marginBottom: 2 },
-  drillSub:    { fontSize: 12, color: C.textMuted, marginBottom: 6 },
+  drillTitle:  { fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  drillSub:    { fontSize: 12, marginBottom: 6 },
   drillBarWrap:{ marginTop: 2 },
   drillRight:  { alignItems: 'flex-end', gap: 4 },
   drillPct:    { fontSize: 13, fontWeight: '700' },
-  drillChev:   { fontSize: 20, color: C.grayLight },
+  drillChev:   { fontSize: 20 },
 
   // Whole Quran card
   quranCard: {
-    backgroundColor: C.white,
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowOffset: { width: 0, height: 1 },
     shadowRadius: 4,
     elevation: 1,
   },
-  quranTitle: { fontSize: 12, fontWeight: '600', color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
-  quranHero:  { fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 10 },
-  quranPct:   { fontSize: 13, color: C.textMuted, marginTop: 6 },
+  quranTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  quranHero:  { fontSize: 18, fontWeight: '700', marginBottom: 10 },
+  quranPct:   { fontSize: 13, marginTop: 6 },
 
-  updatedAt: { fontSize: 11, color: C.textLight, textAlign: 'center', marginTop: 4 },
+  updatedAt: { fontSize: 11, textAlign: 'center', marginTop: 4 },
 });

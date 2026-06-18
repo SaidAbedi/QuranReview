@@ -1,4 +1,5 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useTheme } from '@/hooks/useTheme';
 
 interface Props {
   message?: string;
@@ -6,13 +7,17 @@ interface Props {
 }
 
 export function ErrorScreen({ message = 'Something went wrong.', onRetry }: Props) {
+  const theme = useTheme();
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Text style={styles.emoji}>⚠️</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={[styles.message, { color: theme.colors.textSecondary }]}>{message}</Text>
       {onRetry && (
-        <TouchableOpacity style={styles.button} onPress={onRetry}>
-          <Text style={styles.buttonText}>Try Again</Text>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: theme.colors.brandPrimary }]}
+          onPress={onRetry}
+        >
+          <Text style={[styles.buttonText, { color: theme.colors.brandOnPrimary }]}>Try Again</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -20,30 +25,9 @@ export function ErrorScreen({ message = 'Something went wrong.', onRetry }: Prop
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    padding: 24,
-    gap: 12,
-  },
-  emoji: { fontSize: 40 },
-  message: {
-    color: '#374151',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  button: {
-    marginTop: 8,
-    backgroundColor: '#1B4F72',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+  emoji:     { fontSize: 40 },
+  message:   { fontSize: 16, textAlign: 'center' },
+  button:    { marginTop: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 },
+  buttonText:{ fontSize: 15, fontWeight: '600' },
 });

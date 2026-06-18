@@ -14,18 +14,19 @@ import { getTeachers, assignTeacher } from '@/api/admin';
 import type { TeacherOption } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
+import { useTheme } from '@/hooks/useTheme';
 
 function capacityLabel(t: TeacherOption): string {
   if (t.capacity == null) return `${t.currentLoad} student${t.currentLoad !== 1 ? 's' : ''}`;
   return `${t.currentLoad} / ${t.capacity}`;
 }
 
-function capacityColor(t: TeacherOption): string {
-  if (t.capacity == null) return '#6B7280';
+function capacityColor(t: TeacherOption, T: ReturnType<typeof useTheme>['colors']): string {
+  if (t.capacity == null) return T.textMuted;
   const pct = t.currentLoad / t.capacity;
-  if (pct >= 1) return '#DC2626';
-  if (pct >= 0.8) return '#D97706';
-  return '#059669';
+  if (pct >= 1) return T.error;
+  if (pct >= 0.8) return T.warning;
+  return T.success;
 }
 
 function TeacherCard({
@@ -37,23 +38,25 @@ function TeacherCard({
   onSelect: () => void;
   disabled: boolean;
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const full = teacher.capacity != null && teacher.currentLoad >= teacher.capacity;
   return (
     <TouchableOpacity
-      style={[styles.card, full && styles.cardFull]}
+      style={[styles.card, { backgroundColor: T.surface, borderColor: T.border }, full && styles.cardFull]}
       onPress={onSelect}
       disabled={disabled || full}
       activeOpacity={0.7}
     >
       <View style={styles.cardBody}>
-        <Text style={styles.teacherName}>{teacher.displayName}</Text>
-        <Text style={styles.teacherEmail}>{teacher.email}</Text>
+        <Text style={[styles.teacherName, { color: T.textPrimary }]}>{teacher.displayName}</Text>
+        <Text style={[styles.teacherEmail, { color: T.textMuted }]}>{teacher.email}</Text>
       </View>
       <View style={styles.loadBadge}>
-        <Text style={[styles.loadText, { color: capacityColor(teacher) }]}>
+        <Text style={[styles.loadText, { color: capacityColor(teacher, T) }]}>
           {capacityLabel(teacher)}
         </Text>
-        {full && <Text style={styles.fullLabel}>Full</Text>}
+        {full && <Text style={[styles.fullLabel, { color: T.error }]}>Full</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -66,6 +69,8 @@ export default function AssignTeacherScreen() {
     studentEmail: string;
   }>();
   const router = useRouter();
+  const theme = useTheme();
+  const T = theme.colors;
 
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,15 +126,15 @@ export default function AssignTeacherScreen() {
 
   return (
     <FlatList
-      style={styles.list}
+      style={[styles.list, { backgroundColor: T.backgroundAlt }]}
       contentContainerStyle={styles.content}
       data={teachers}
       keyExtractor={(t) => t.id}
       ListHeaderComponent={
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>{studentName}</Text>
-          <Text style={styles.headerSub}>{studentEmail}</Text>
-          <Text style={styles.headerLabel}>Select a teacher to assign:</Text>
+        <View style={[styles.header, { backgroundColor: T.surface, borderColor: T.border }]}>
+          <Text style={[styles.headerTitle, { color: T.textPrimary }]}>{studentName}</Text>
+          <Text style={[styles.headerSub, { color: T.textMuted }]}>{studentEmail}</Text>
+          <Text style={[styles.headerLabel, { color: T.textSecondary }]}>Select a teacher to assign:</Text>
         </View>
       }
       refreshControl={
@@ -146,13 +151,13 @@ export default function AssignTeacherScreen() {
         />
       )}
       ListEmptyComponent={
-        <Text style={styles.emptyText}>No teachers found in the system.</Text>
+        <Text style={[styles.emptyText, { color: T.textMuted }]}>No teachers found in the system.</Text>
       }
       ListFooterComponent={
         assigning ? (
           <View style={styles.assigningRow}>
-            <ActivityIndicator color="#1B4F72" />
-            <Text style={styles.assigningText}>Assigning…</Text>
+            <ActivityIndicator color={T.brandPrimary} />
+            <Text style={[styles.assigningText, { color: T.textMuted }]}>Assigning…</Text>
           </View>
         ) : null
       }
@@ -161,38 +166,34 @@ export default function AssignTeacherScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: '#F8F9FA' },
+  list: { flex: 1 },
   content: { padding: 16, gap: 10 },
   header: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
     marginBottom: 8,
     gap: 4,
   },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  headerSub: { fontSize: 13, color: '#6B7280' },
-  headerLabel: { fontSize: 13, color: '#374151', marginTop: 8, fontWeight: '600' },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
+  headerSub: { fontSize: 13 },
+  headerLabel: { fontSize: 13, marginTop: 8, fontWeight: '600' },
   card: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   cardFull: { opacity: 0.5 },
   cardBody: { flex: 1, gap: 2 },
-  teacherName: { fontSize: 15, fontWeight: '600', color: '#111827' },
-  teacherEmail: { fontSize: 12, color: '#9CA3AF' },
+  teacherName: { fontSize: 15, fontWeight: '600' },
+  teacherEmail: { fontSize: 12 },
   loadBadge: { alignItems: 'flex-end', gap: 2 },
   loadText: { fontSize: 13, fontWeight: '600' },
-  fullLabel: { fontSize: 11, color: '#DC2626', fontWeight: '700' },
-  emptyText: { textAlign: 'center', color: '#9CA3AF', fontSize: 14, marginTop: 32 },
+  fullLabel: { fontSize: 11, fontWeight: '700' },
+  emptyText: { textAlign: 'center', fontSize: 14, marginTop: 32 },
   assigningRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16 },
-  assigningText: { fontSize: 14, color: '#6B7280' },
+  assigningText: { fontSize: 14 },
 });

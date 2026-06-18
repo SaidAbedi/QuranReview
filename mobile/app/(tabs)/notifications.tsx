@@ -10,14 +10,14 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getStudentAssignments } from '@/api/assignments';
 import { getStudentSubmissions } from '@/api/submissions';
-import { C } from '@/constants/colors';
 import type { AssignmentSummary, SubmissionRow } from '@/types/api';
+import { useTheme } from '@/hooks/useTheme';
 
 // ── Card components ──────────────────────────────────────────────────────────
 
-function PageLabel({ assignment }: { assignment: AssignmentSummary }) {
+function PageLabel({ assignment, color }: { assignment: AssignmentSummary; color: string }) {
   return (
-    <Text style={styles.cardPage}>
+    <Text style={[styles.cardPage, { color }]}>
       {assignment.surahNameEnglish
         ? `${assignment.surahNameEnglish} · Page ${assignment.pageNumber}`
         : `Page ${assignment.pageNumber}`}
@@ -32,16 +32,18 @@ function RerecordCard({
   assignment: AssignmentSummary;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
   return (
-    <View style={styles.card}>
-      <View style={[styles.cardAccent, { backgroundColor: C.red }]} />
+    <View style={[styles.card, { backgroundColor: T.surface, shadowColor: T.shadow }]}>
+      <View style={[styles.cardAccent, { backgroundColor: T.error }]} />
       <View style={styles.cardBody}>
-        <Text style={[styles.cardStatus, { color: C.red }]}>Practice needed</Text>
-        <PageLabel assignment={assignment} />
-        <Text style={styles.cardHint}>Your teacher asked you to re-record this page.</Text>
+        <Text style={[styles.cardStatus, { color: T.error }]}>Practice needed</Text>
+        <PageLabel assignment={assignment} color={T.textPrimary} />
+        <Text style={[styles.cardHint, { color: T.textMuted }]}>Your teacher asked you to re-record this page.</Text>
       </View>
-      <TouchableOpacity style={[styles.cardBtn, styles.cardBtnRed]} onPress={onPress} activeOpacity={0.8}>
-        <Text style={styles.cardBtnText}>Re-record</Text>
+      <TouchableOpacity style={[styles.cardBtn, { backgroundColor: T.error }]} onPress={onPress} activeOpacity={0.8}>
+        <Text style={[styles.cardBtnText, { color: T.surface }]}>Re-record</Text>
       </TouchableOpacity>
     </View>
   );
@@ -54,16 +56,18 @@ function FeedbackCard({
   assignment: AssignmentSummary;
   onPress: () => void;
 }) {
+  const theme = useTheme();
+  const T = theme.colors;
   return (
-    <View style={styles.card}>
-      <View style={[styles.cardAccent, { backgroundColor: C.purple }]} />
+    <View style={[styles.card, { backgroundColor: T.surface, shadowColor: T.shadow }]}>
+      <View style={[styles.cardAccent, { backgroundColor: T.info }]} />
       <View style={styles.cardBody}>
-        <Text style={[styles.cardStatus, { color: C.purple }]}>Feedback ready</Text>
-        <PageLabel assignment={assignment} />
-        <Text style={styles.cardHint}>Your teacher has left annotations on your recitation.</Text>
+        <Text style={[styles.cardStatus, { color: T.info }]}>Feedback ready</Text>
+        <PageLabel assignment={assignment} color={T.textPrimary} />
+        <Text style={[styles.cardHint, { color: T.textMuted }]}>Your teacher has left annotations on your recitation.</Text>
       </View>
-      <TouchableOpacity style={[styles.cardBtn, styles.cardBtnPurple]} onPress={onPress} activeOpacity={0.8}>
-        <Text style={styles.cardBtnText}>View</Text>
+      <TouchableOpacity style={[styles.cardBtn, { backgroundColor: T.info }]} onPress={onPress} activeOpacity={0.8}>
+        <Text style={[styles.cardBtnText, { color: T.surface }]}>View</Text>
       </TouchableOpacity>
     </View>
   );
@@ -73,6 +77,9 @@ function FeedbackCard({
 
 export default function FocusScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const T = theme.colors;
+
   const [assignments, setAssignments] = useState<AssignmentSummary[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -100,7 +107,7 @@ export default function FocusScreen() {
 
   const subByAssignment = useMemo(() => {
     const map = new Map<string, SubmissionRow>();
-    for (const s of submissions) map.set(s.assignmentId, s);
+    for (const sub of submissions) map.set(sub.assignmentId, sub);
     return map;
   }, [submissions]);
 
@@ -149,28 +156,28 @@ export default function FocusScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerWrap}>
-        <Text style={styles.loadingText}>Loading…</Text>
+      <View style={[styles.centerWrap, { backgroundColor: T.backgroundAlt }]}>
+        <Text style={[styles.loadingText, { color: T.textMuted }]}>Loading…</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: T.backgroundAlt }]}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.blue} />
+        <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={T.brandPrimary} />
       }
     >
       {/* ── Needs attention ── */}
-      <Text style={styles.sectionLabel}>NEEDS ATTENTION</Text>
+      <Text style={[styles.sectionLabel, { color: T.textMuted }]}>NEEDS ATTENTION</Text>
 
       {actionCount === 0 ? (
-        <View style={styles.allCaughtUp}>
-          <Text style={styles.allCaughtUpIcon}>✓</Text>
-          <Text style={styles.allCaughtUpTitle}>All caught up</Text>
-          <Text style={styles.allCaughtUpBody}>
+        <View style={[styles.allCaughtUp, { backgroundColor: T.surface }]}>
+          <Text style={[styles.allCaughtUpIcon, { color: T.success }]}>✓</Text>
+          <Text style={[styles.allCaughtUpTitle, { color: T.textPrimary }]}>All caught up</Text>
+          <Text style={[styles.allCaughtUpBody, { color: T.textMuted }]}>
             Nothing to do right now. Your teacher will notify you when they review your recitation.
           </Text>
         </View>
@@ -201,17 +208,17 @@ export default function FocusScreen() {
             onPress={() => setCompletedOpen((v) => !v)}
             activeOpacity={0.7}
           >
-            <Text style={styles.sectionLabel}>RECENTLY COMPLETED</Text>
-            <Text style={styles.completedChev}>{completedOpen ? '▲' : '▼'}</Text>
+            <Text style={[styles.sectionLabel, { color: T.textMuted }]}>RECENTLY COMPLETED</Text>
+            <Text style={[styles.completedChev, { color: T.textMuted }]}>{completedOpen ? '▲' : '▼'}</Text>
           </TouchableOpacity>
 
           {completedOpen && (
-            <View style={styles.completedList}>
+            <View style={[styles.completedList, { backgroundColor: T.surface }]}>
               {recentlyCompleted.map((a) => (
-                <View key={a.id} style={styles.completedRow}>
-                  <Text style={styles.completedCheck}>✓</Text>
+                <View key={a.id} style={[styles.completedRow, { borderTopColor: T.border }]}>
+                  <Text style={[styles.completedCheck, { color: T.success }]}>✓</Text>
                   <View style={styles.completedMeta}>
-                    <Text style={styles.completedPage}>
+                    <Text style={[styles.completedPage, { color: T.textPrimary }]}>
                       {a.surahNameEnglish
                         ? `${a.surahNameEnglish} · Page ${a.pageNumber}`
                         : `Page ${a.pageNumber}`}
@@ -228,16 +235,15 @@ export default function FocusScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.surface },
+  container: { flex: 1 },
   content:   { padding: 16, gap: 8, paddingBottom: 32 },
 
   centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { color: C.textMuted, fontSize: 14 },
+  loadingText: { fontSize: 14 },
 
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: C.textMuted,
     letterSpacing: 0.8,
     marginBottom: 8,
     marginTop: 4,
@@ -247,12 +253,10 @@ const styles = StyleSheet.create({
   cards: { gap: 10 },
 
   card: {
-    backgroundColor: C.white,
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
-    shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowOffset: { width: 0, height: 1 },
     shadowRadius: 4,
@@ -261,8 +265,8 @@ const styles = StyleSheet.create({
   cardAccent: { width: 4, alignSelf: 'stretch' },
   cardBody: { flex: 1, paddingVertical: 14, paddingHorizontal: 12, gap: 3 },
   cardStatus: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
-  cardPage:   { fontSize: 14, fontWeight: '600', color: C.text },
-  cardHint:   { fontSize: 12, color: C.textMuted, lineHeight: 16 },
+  cardPage:   { fontSize: 14, fontWeight: '600' },
+  cardHint:   { fontSize: 12, lineHeight: 16 },
 
   cardBtn: {
     paddingVertical: 10,
@@ -271,23 +275,19 @@ const styles = StyleSheet.create({
     marginRight: 12,
     alignItems: 'center',
   },
-  cardBtnRed:    { backgroundColor: C.red },
-  cardBtnPurple: { backgroundColor: C.purple },
-  cardBtnText:   { fontSize: 13, fontWeight: '700', color: C.white },
+  cardBtnText: { fontSize: 13, fontWeight: '700' },
 
   // ── All caught up ──
   allCaughtUp: {
-    backgroundColor: C.white,
     borderRadius: 16,
     padding: 32,
     alignItems: 'center',
     gap: 10,
   },
-  allCaughtUpIcon:  { fontSize: 36, color: C.green },
-  allCaughtUpTitle: { fontSize: 18, fontWeight: '700', color: C.text },
+  allCaughtUpIcon:  { fontSize: 36 },
+  allCaughtUpTitle: { fontSize: 18, fontWeight: '700' },
   allCaughtUpBody:  {
     fontSize: 14,
-    color: C.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -300,9 +300,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  completedChev: { fontSize: 11, color: C.textMuted },
+  completedChev: { fontSize: 11 },
   completedList: {
-    backgroundColor: C.white,
     borderRadius: 14,
     overflow: 'hidden',
   },
@@ -313,9 +312,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
   },
-  completedCheck: { fontSize: 14, color: C.green, fontWeight: '700' },
+  completedCheck: { fontSize: 14, fontWeight: '700' },
   completedMeta:  { flex: 1 },
-  completedPage:  { fontSize: 14, color: C.text },
+  completedPage:  { fontSize: 14 },
 });

@@ -13,12 +13,14 @@ import {
 import { Link } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
+import { useTheme } from '@/hooks/useTheme';
 
 export default function RegisterScreen() {
+  const theme = useTheme();
   const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
+  const [loading, setLoading]         = useState(false);
 
   async function handleRegister() {
     if (!displayName || !email || !password) {
@@ -29,11 +31,7 @@ export default function RegisterScreen() {
       Alert.alert('Weak password', 'Password must be at least 6 characters.');
       return;
     }
-
     setLoading(true);
-    // Derive the confirmation redirect URL from the env.
-    // EXPO_PUBLIC_AUTH_REDIRECT_URL can be set explicitly, or we fall back to
-    // stripping /api from the API base URL and appending /auth/callback.
     const authRedirectUrl =
       process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL ??
       process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/api$/, '/auth/callback');
@@ -47,20 +45,18 @@ export default function RegisterScreen() {
       },
     });
     setLoading(false);
-
     if (error) {
       Alert.alert('Sign-up failed', error.message);
     } else {
-      Alert.alert(
-        'Check your email',
-        'We sent a confirmation link. Click it to activate your account.',
-      );
+      Alert.alert('Check your email', 'We sent a confirmation link. Click it to activate your account.');
     }
   }
 
+  const T = theme.colors;
+
   return (
     <KeyboardAvoidingView
-      style={styles.flex}
+      style={[styles.flex, { backgroundColor: T.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -68,37 +64,40 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Join QuranReview</Text>
+          <Text style={[styles.title, { color: T.brandPrimary }]}>Create account</Text>
+          <Text style={[styles.subtitle, { color: T.textMuted }]}>Join QuranReview</Text>
         </View>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Display name</Text>
+        <View style={[styles.card, { backgroundColor: T.surface, borderColor: T.border }]}>
+          <Text style={[styles.label, { color: T.textSecondary }]}>Display name</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: T.inputBackground, borderColor: T.inputBorder, color: T.textPrimary }]}
             value={displayName}
             onChangeText={setDisplayName}
             placeholder="Your name"
+            placeholderTextColor={T.inputPlaceholder}
             autoCapitalize="words"
           />
 
-          <Text style={styles.label}>Email</Text>
+          <Text style={[styles.label, { color: T.textSecondary }]}>Email</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: T.inputBackground, borderColor: T.inputBorder, color: T.textPrimary }]}
             value={email}
             onChangeText={setEmail}
             placeholder="you@example.com"
+            placeholderTextColor={T.inputPlaceholder}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>Password</Text>
+          <Text style={[styles.label, { color: T.textSecondary }]}>Password</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: T.inputBackground, borderColor: T.inputBorder, color: T.textPrimary }]}
             value={password}
             onChangeText={setPassword}
             placeholder="Minimum 6 characters"
+            placeholderTextColor={T.inputPlaceholder}
             secureTextEntry
           />
 
@@ -112,10 +111,10 @@ export default function RegisterScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account? </Text>
+          <Text style={[styles.footerText, { color: T.textMuted }]}>Already have an account? </Text>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity>
-              <Text style={styles.link}>Sign in</Text>
+              <Text style={[styles.link, { color: T.brandPrimary }]}>Sign in</Text>
             </TouchableOpacity>
           </Link>
         </View>
@@ -125,25 +124,29 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#F8F9FA' },
+  flex:      { flex: 1 },
   container: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  header: { alignItems: 'center', marginBottom: 40 },
-  title: { fontSize: 32, fontWeight: '700', color: '#1B4F72' },
-  subtitle: { fontSize: 16, color: '#6B7280', marginTop: 6 },
-  form: { gap: 8 },
-  label: { fontSize: 14, fontWeight: '600', color: '#374151', marginTop: 8 },
-  input: {
-    backgroundColor: '#fff',
+  header:    { alignItems: 'center', marginBottom: 32 },
+  title:     { fontSize: 32, fontWeight: '700' },
+  subtitle:  { fontSize: 16, marginTop: 6 },
+  card: {
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
+    padding: 20,
+    gap: 8,
+    marginBottom: 8,
+  },
+  label:  { fontSize: 14, fontWeight: '600', marginTop: 4 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 16,
-    color: '#111827',
+    fontSize: 15,
+    minHeight: 50,
   },
-  button: { marginTop: 16 },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
-  footerText: { color: '#6B7280', fontSize: 15 },
-  link: { color: '#1B4F72', fontSize: 15, fontWeight: '600' },
+  button:     { marginTop: 8 },
+  footer:     { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  footerText: { fontSize: 15 },
+  link:       { fontSize: 15, fontWeight: '600' },
 });

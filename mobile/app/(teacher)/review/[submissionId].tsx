@@ -40,6 +40,7 @@ import {
 import AudioPlayerBar from '@/components/AudioPlayerBar';
 import AnnotationCanvas, { LocalAnnotation } from '@/components/AnnotationCanvas';
 import AnnotationDetailsSheet from '@/components/AnnotationDetailsSheet';
+import { useTheme } from '@/hooks/useTheme';
 import type {
   AnnotationPoint,
   AnnotationRow,
@@ -87,6 +88,8 @@ function nextLocalId() { return `local-${Date.now()}-${localIdCounter++}`; }
 export default function ReviewDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const theme = useTheme('dark');
+  const T = theme.colors;
   const {
     submissionId, attemptId, pageNumber,
     pageImageUrl: initialPageImageUrl,
@@ -437,19 +440,19 @@ export default function ReviewDetailScreen() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: T.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* ── Top bar ── */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { backgroundColor: T.surface, borderBottomColor: T.border }]}>
         <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()}>
-          <Text style={styles.topBarBack}>‹</Text>
+          <Text style={[styles.topBarBack, { color: T.brandPrimary }]}>‹</Text>
         </TouchableOpacity>
         <View style={styles.topBarCenter}>
-          <Text style={styles.topBarTitle} numberOfLines={1}>
+          <Text style={[styles.topBarTitle, { color: T.textPrimary }]} numberOfLines={1}>
             {studentName || 'Review'}
           </Text>
-          <Text style={styles.topBarSub}>
+          <Text style={[styles.topBarSub, { color: T.textMuted }]}>
             Page {pageNumber ?? '?'} · Attempt {attemptNumber ?? '1'}
           </Text>
         </View>
@@ -458,7 +461,7 @@ export default function ReviewDetailScreen() {
 
       {/* ── Canvas area (sits between top bar and toolbar) ── */}
       <View
-        style={styles.canvasArea}
+        style={[styles.canvasArea, { backgroundColor: T.backgroundAlt }]}
         onLayout={(e) => setCanvasSize({
           width: e.nativeEvent.layout.width,
           height: e.nativeEvent.layout.height,
@@ -466,13 +469,13 @@ export default function ReviewDetailScreen() {
       >
         {!pageImageUrl && (
           <View style={styles.pagePlaceholder}>
-            <Text style={styles.pagePlaceholderText}>Page unavailable</Text>
+            <Text style={[styles.pagePlaceholderText, { color: T.textDisabled }]}>Page unavailable</Text>
           </View>
         )}
 
         {loadingAnnotations && (
           <View style={styles.canvasLoading}>
-            <ActivityIndicator color="#1B4F72" />
+            <ActivityIndicator color={T.brandPrimary} />
           </View>
         )}
 
@@ -492,38 +495,42 @@ export default function ReviewDetailScreen() {
 
       {/* ── Failed save banners ── */}
       {failedAnnotations.map((local) => (
-        <View key={local.localId} style={styles.failedBanner}>
-          <Text style={styles.failedText}>⚠ Failed to save correction</Text>
-          <TouchableOpacity style={styles.failedBtn} onPress={() => handleRetryFailed(local)}>
-            <Text style={styles.failedBtnText}>Retry</Text>
+        <View key={local.localId} style={[styles.failedBanner, { backgroundColor: T.errorBg, borderTopColor: T.error }]}>
+          <Text style={[styles.failedText, { color: T.error }]}>⚠ Failed to save correction</Text>
+          <TouchableOpacity style={[styles.failedBtn, { backgroundColor: T.error }]} onPress={() => handleRetryFailed(local)}>
+            <Text style={[styles.failedBtnText, { color: T.textPrimary }]}>Retry</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.failedBtnOutline} onPress={() => handleDiscardFailed(local.localId)}>
-            <Text style={styles.failedBtnOutlineText}>Discard</Text>
+          <TouchableOpacity style={[styles.failedBtnOutline, { borderColor: T.error }]} onPress={() => handleDiscardFailed(local.localId)}>
+            <Text style={[styles.failedBtnOutlineText, { color: T.error }]}>Discard</Text>
           </TouchableOpacity>
         </View>
       ))}
 
       {/* ── Bottom bar ── */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8, backgroundColor: T.surface, borderTopColor: T.border }]}>
         {/* Mini audio player */}
         <AudioPlayerBar submissionId={submissionId} attemptId={attemptId} compact />
 
         {/* Mark as Complete — primary action */}
         <TouchableOpacity
-          style={[styles.completeBtn, submitting && styles.disabledBtn]}
+          style={[styles.completeBtn, { backgroundColor: T.brandPrimary }, submitting && styles.disabledBtn]}
           onPress={() => handleCompleteReview('completed')}
           disabled={submitting}
         >
           {submitting ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <ActivityIndicator color={T.brandOnPrimary} size="small" />
           ) : (
-            <Text style={styles.completeBtnText}>✓ Complete</Text>
+            <Text style={[styles.completeBtnText, { color: T.brandOnPrimary }]}>✓ Complete</Text>
           )}
         </TouchableOpacity>
 
         {/* Review voice note button */}
         <TouchableOpacity
-          style={[styles.rvnBtn, reviewVoiceNote && styles.rvnBtnOn]}
+          style={[
+            styles.rvnBtn,
+            { borderColor: T.border, backgroundColor: T.surfaceRaised },
+            reviewVoiceNote && { backgroundColor: T.brandPrimary, borderColor: T.brandPrimary },
+          ]}
           onPress={() => setRvnOpen(true)}
           accessibilityLabel="Review voice note"
         >
@@ -532,17 +539,21 @@ export default function ReviewDetailScreen() {
 
         {/* Mark (draw corrections) toggle */}
         <TouchableOpacity
-          style={[styles.markBtn, marking && styles.markBtnOn]}
+          style={[
+            styles.markBtn,
+            { borderColor: T.border },
+            marking && { backgroundColor: T.brandPrimary, borderColor: T.brandPrimary },
+          ]}
           onPress={() => setMarking((v) => !v)}
         >
-          <Text style={[styles.markBtnText, marking && styles.markBtnTextOn]}>
+          <Text style={[styles.markBtnText, { color: marking ? T.brandOnPrimary : T.textSecondary }]}>
             {marking ? '✏️ Marking' : '✏️ Mark'}
           </Text>
         </TouchableOpacity>
 
         {/* More actions */}
-        <TouchableOpacity style={styles.menuBtn} onPress={() => setActionsOpen(true)}>
-          <Text style={styles.menuBtnText}>···</Text>
+        <TouchableOpacity style={[styles.menuBtn, { backgroundColor: T.surfaceRaised }]} onPress={() => setActionsOpen(true)}>
+          <Text style={[styles.menuBtnText, { color: T.textSecondary }]}>···</Text>
         </TouchableOpacity>
       </View>
 
@@ -554,17 +565,17 @@ export default function ReviewDetailScreen() {
         onRequestClose={() => setActionsOpen(false)}
       >
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setActionsOpen(false)}>
-          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
-            <View style={styles.sheetHandle} />
+          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { paddingBottom: insets.bottom + 8, backgroundColor: T.surfaceRaised }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: T.border }]} />
 
             <View style={styles.sheetMetaRow}>
-              <Text style={styles.sheetMeta}>
+              <Text style={[styles.sheetMeta, { color: T.textMuted }]}>
                 {savedAnnotations.length} correction{savedAnnotations.length !== 1 ? 's' : ''}
                 {savingCount > 0 ? ` · ${savingCount} saving…` : ''}
               </Text>
             </View>
 
-            <View style={styles.sheetDivider} />
+            <View style={[styles.sheetDivider, { backgroundColor: T.divider }]} />
 
             <TouchableOpacity
               style={styles.sheetAction}
@@ -572,21 +583,21 @@ export default function ReviewDetailScreen() {
               disabled={submitting}
             >
               <Text style={styles.sheetActionIcon}>↩</Text>
-              <Text style={styles.sheetActionTextDestructive}>Request Another Attempt</Text>
+              <Text style={[styles.sheetActionTextDestructive, { color: T.error }]}>Request Another Attempt</Text>
             </TouchableOpacity>
 
             {attemptHistory.length > 0 && (
               <>
-                <View style={styles.sheetDivider} />
+                <View style={[styles.sheetDivider, { backgroundColor: T.divider }]} />
                 <TouchableOpacity
                   style={styles.sheetAction}
                   onPress={() => setShowHistory((v) => !v)}
                 >
                   <Text style={styles.sheetActionIcon}>📋</Text>
-                  <Text style={styles.sheetActionText}>
+                  <Text style={[styles.sheetActionText, { color: T.textPrimary }]}>
                     Attempt History ({attemptHistory.length})
                   </Text>
-                  <Text style={styles.sheetChevron}>{showHistory ? '▲' : '▼'}</Text>
+                  <Text style={[styles.sheetChevron, { color: T.textMuted }]}>{showHistory ? '▲' : '▼'}</Text>
                 </TouchableOpacity>
 
                 {showHistory && attemptHistory.map((a) => {
@@ -594,17 +605,17 @@ export default function ReviewDetailScreen() {
                   return (
                     <TouchableOpacity
                       key={a.id}
-                      style={[styles.historyRow, isCurrent && styles.historyRowCurrent]}
+                      style={[styles.historyRow, { borderTopColor: T.divider }, isCurrent && { backgroundColor: T.infoBg }]}
                       onPress={() => handleSwitchAttempt(a)}
                       disabled={isCurrent}
                     >
-                      <Text style={[styles.historyNum, isCurrent && styles.historyNumCurrent]}>
+                      <Text style={[styles.historyNum, { color: isCurrent ? T.info : T.textSecondary }, isCurrent && styles.historyNumCurrent]}>
                         Attempt {a.attemptNumber}{isCurrent ? ' · current' : ''}
                       </Text>
-                      <Text style={styles.historyStatus}>
+                      <Text style={[styles.historyStatus, { color: T.textMuted }]}>
                         {ATTEMPT_STATUS_LABELS[a.status] ?? a.status}
                       </Text>
-                      <Text style={styles.historyDate}>{relativeDate(a.submittedAt)}</Text>
+                      <Text style={[styles.historyDate, { color: T.textDisabled }]}>{relativeDate(a.submittedAt)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -634,11 +645,11 @@ export default function ReviewDetailScreen() {
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setRvnOpen(false)}>
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.sheet, styles.rvnSheet, { paddingBottom: insets.bottom + 16 }]}
+            style={[styles.sheet, styles.rvnSheet, { paddingBottom: insets.bottom + 16, backgroundColor: T.surfaceRaised }]}
           >
-            <View style={styles.sheetHandle} />
-            <Text style={styles.rvnTitle}>Review Voice Note</Text>
-            <Text style={styles.rvnHint}>
+            <View style={[styles.sheetHandle, { backgroundColor: T.border }]} />
+            <Text style={[styles.rvnTitle, { color: T.textPrimary }]}>Review Voice Note</Text>
+            <Text style={[styles.rvnHint, { color: T.textMuted }]}>
               Leave an overall message for the student about this recitation
             </Text>
 
@@ -648,45 +659,45 @@ export default function ReviewDetailScreen() {
                rvnState !== 'recording' &&
                rvnState !== 'uploading' ? (
                 <>
-                  <TouchableOpacity style={styles.rvnPlayBtn} onPress={handlePlayRvn}>
-                    <Text style={styles.rvnPlayBtnText}>
+                  <TouchableOpacity style={[styles.rvnPlayBtn, { backgroundColor: T.infoBg, borderColor: T.info }]} onPress={handlePlayRvn}>
+                    <Text style={[styles.rvnPlayBtnText, { color: T.info }]}>
                       {rvnPlayerStatus.playing ? '⏸  Playing…' : '▶  Play Message'}
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.rvnReRecordBtn} onPress={handleStartRvnRecording}>
-                    <Text style={styles.rvnReRecordBtnText}>🎙  Re-record</Text>
+                  <TouchableOpacity style={[styles.rvnReRecordBtn, { backgroundColor: T.successBg, borderColor: T.success }]} onPress={handleStartRvnRecording}>
+                    <Text style={[styles.rvnReRecordBtnText, { color: T.success }]}>🎙  Re-record</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.rvnDeleteBtn} onPress={handleDeleteRvn}>
-                    <Text style={styles.rvnDeleteBtnText}>Remove Voice Note</Text>
+                    <Text style={[styles.rvnDeleteBtnText, { color: T.error }]}>Remove Voice Note</Text>
                   </TouchableOpacity>
                 </>
               ) : rvnState === 'recording' ? (
                 <View style={styles.rvnRecordingRow}>
-                  <View style={styles.rvnRecordingIndicator}>
-                    <View style={styles.rvnRecDot} />
-                    <Text style={styles.rvnRecTimer}>{formatRvnDuration(rvnDurationMs)}</Text>
+                  <View style={[styles.rvnRecordingIndicator, { backgroundColor: T.errorBg, borderColor: T.error }]}>
+                    <View style={[styles.rvnRecDot, { backgroundColor: T.error }]} />
+                    <Text style={[styles.rvnRecTimer, { color: T.error }]}>{formatRvnDuration(rvnDurationMs)}</Text>
                   </View>
-                  <TouchableOpacity style={styles.rvnStopBtn} onPress={handleStopRvnRecording}>
-                    <Text style={styles.rvnStopBtnText}>■  Stop</Text>
+                  <TouchableOpacity style={[styles.rvnStopBtn, { backgroundColor: T.error }]} onPress={handleStopRvnRecording}>
+                    <Text style={[styles.rvnStopBtnText, { color: T.textPrimary }]}>■  Stop</Text>
                   </TouchableOpacity>
                 </View>
               ) : rvnState === 'uploading' ? (
                 <View style={styles.rvnUploadingRow}>
-                  <ActivityIndicator size="small" color="#1B4F72" />
-                  <Text style={styles.rvnUploadingText}>Saving voice note…</Text>
+                  <ActivityIndicator size="small" color={T.brandPrimary} />
+                  <Text style={[styles.rvnUploadingText, { color: T.brandPrimary }]}>Saving voice note…</Text>
                 </View>
               ) : (
-                <TouchableOpacity style={styles.rvnRecordBtn} onPress={handleStartRvnRecording}>
-                  <Text style={styles.rvnRecordBtnText}>🎙  Record Voice Note</Text>
+                <TouchableOpacity style={[styles.rvnRecordBtn, { backgroundColor: T.successBg, borderColor: T.success }]} onPress={handleStartRvnRecording}>
+                  <Text style={[styles.rvnRecordBtnText, { color: T.success }]}>🎙  Record Voice Note</Text>
                 </TouchableOpacity>
               )}
             </View>
 
             <TouchableOpacity
-              style={styles.rvnDoneBtn}
+              style={[styles.rvnDoneBtn, { backgroundColor: T.brandPrimary }]}
               onPress={() => setRvnOpen(false)}
             >
-              <Text style={styles.rvnDoneBtnText}>Done</Text>
+              <Text style={[styles.rvnDoneBtnText, { color: T.brandOnPrimary }]}>Done</Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -696,7 +707,7 @@ export default function ReviewDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
+  root: { flex: 1 },
 
   // Top bar
   topBar: {
@@ -704,24 +715,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 52,
     paddingHorizontal: 4,
-    backgroundColor: '#fff',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E7EB',
   },
   topBarBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  topBarBack: { fontSize: 28, color: '#1B4F72', lineHeight: 32 },
+  topBarBack: { fontSize: 28, lineHeight: 32 },
   topBarCenter: { flex: 1, alignItems: 'center' },
-  topBarTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  topBarSub: { fontSize: 12, color: '#6B7280', marginTop: 1 },
+  topBarTitle: { fontSize: 15, fontWeight: '700' },
+  topBarSub: { fontSize: 12, marginTop: 1 },
 
   // Canvas area
   canvasArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
     overflow: 'hidden',
   },
   pagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  pagePlaceholderText: { fontSize: 13, color: '#9CA3AF' },
+  pagePlaceholderText: { fontSize: 13 },
   canvasLoading: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
@@ -730,14 +738,14 @@ const styles = StyleSheet.create({
   // Failed banners
   failedBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#FEF2F2', paddingHorizontal: 12, paddingVertical: 8,
-    borderTopWidth: 1, borderTopColor: '#FECACA',
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderTopWidth: 1,
   },
-  failedText: { flex: 1, fontSize: 13, color: '#DC2626', fontWeight: '500' },
-  failedBtn: { backgroundColor: '#DC2626', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
-  failedBtnText: { fontSize: 12, color: '#fff', fontWeight: '700' },
-  failedBtnOutline: { borderWidth: 1, borderColor: '#DC2626', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
-  failedBtnOutlineText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
+  failedText: { flex: 1, fontSize: 13, fontWeight: '500' },
+  failedBtn: { borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  failedBtnText: { fontSize: 12, fontWeight: '700' },
+  failedBtnOutline: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  failedBtnOutlineText: { fontSize: 12, fontWeight: '600' },
 
   // Bottom bar
   bottomBar: {
@@ -746,108 +754,101 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     gap: 8,
-    backgroundColor: '#fff',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
   },
   completeBtn: {
     flex: 1,
-    backgroundColor: '#1B4F72',
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
   },
   disabledBtn: { opacity: 0.5 },
-  completeBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  completeBtnText: { fontSize: 14, fontWeight: '700' },
   markBtn: {
     paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 10, borderWidth: 1.5, borderColor: '#D1D5DB',
+    borderRadius: 10, borderWidth: 1.5,
   },
-  markBtnOn: { backgroundColor: '#1B4F72', borderColor: '#1B4F72' },
-  markBtnText: { fontSize: 13, fontWeight: '700', color: '#374151' },
-  markBtnTextOn: { color: '#fff' },
+  markBtnText: { fontSize: 13, fontWeight: '700' },
   menuBtn: {
     width: 38, height: 38, alignItems: 'center', justifyContent: 'center',
-    borderRadius: 10, backgroundColor: '#F3F4F6',
+    borderRadius: 10,
   },
-  menuBtnText: { fontSize: 18, color: '#374151', letterSpacing: 1 },
+  menuBtnText: { fontSize: 18, letterSpacing: 1 },
 
   // Review voice note button in bottom bar
   rvnBtn: {
     width: 38, height: 38, alignItems: 'center', justifyContent: 'center',
-    borderRadius: 10, borderWidth: 1.5, borderColor: '#D1D5DB', backgroundColor: '#F9FAFB',
+    borderRadius: 10, borderWidth: 1.5,
   },
-  rvnBtnOn: { backgroundColor: '#1B4F72', borderColor: '#1B4F72' },
   rvnBtnText: { fontSize: 17 },
 
   // Review voice note modal
   rvnSheet: { paddingHorizontal: 20, paddingTop: 8 },
-  rvnTitle: { fontSize: 17, fontWeight: '700', color: '#111827', marginTop: 10, marginBottom: 4 },
-  rvnHint: { fontSize: 13, color: '#9CA3AF', marginBottom: 20, lineHeight: 18 },
+  rvnTitle: { fontSize: 17, fontWeight: '700', marginTop: 10, marginBottom: 4 },
+  rvnHint: { fontSize: 13, marginBottom: 20, lineHeight: 18 },
   rvnControls: { gap: 10, marginBottom: 16 },
   rvnRecordBtn: {
-    backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1,
-    borderColor: '#86EFAC', paddingVertical: 14, alignItems: 'center',
+    borderRadius: 12, borderWidth: 1,
+    paddingVertical: 14, alignItems: 'center',
   },
-  rvnRecordBtnText: { fontSize: 15, fontWeight: '600', color: '#15803D' },
+  rvnRecordBtnText: { fontSize: 15, fontWeight: '600' },
   rvnRecordingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rvnRecordingIndicator: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#FEF2F2', borderRadius: 12, borderWidth: 1,
-    borderColor: '#FECACA', padding: 14,
+    borderRadius: 12, borderWidth: 1,
+    padding: 14,
   },
-  rvnRecDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#DC2626' },
-  rvnRecTimer: { fontSize: 14, fontWeight: '700', color: '#DC2626' },
+  rvnRecDot: { width: 10, height: 10, borderRadius: 5 },
+  rvnRecTimer: { fontSize: 14, fontWeight: '700' },
   rvnStopBtn: {
     paddingVertical: 14, paddingHorizontal: 20,
-    borderRadius: 12, backgroundColor: '#DC2626', alignItems: 'center',
+    borderRadius: 12, alignItems: 'center',
   },
-  rvnStopBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  rvnStopBtnText: { fontSize: 14, fontWeight: '700' },
   rvnUploadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
-  rvnUploadingText: { fontSize: 14, color: '#1B4F72' },
+  rvnUploadingText: { fontSize: 14 },
   rvnPlayBtn: {
-    backgroundColor: '#EFF6FF', borderRadius: 12, borderWidth: 1,
-    borderColor: '#BFDBFE', paddingVertical: 14, alignItems: 'center',
+    borderRadius: 12, borderWidth: 1,
+    paddingVertical: 14, alignItems: 'center',
   },
-  rvnPlayBtnText: { fontSize: 14, fontWeight: '600', color: '#1D4ED8' },
+  rvnPlayBtnText: { fontSize: 14, fontWeight: '600' },
   rvnReRecordBtn: {
-    backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1,
-    borderColor: '#86EFAC', paddingVertical: 12, alignItems: 'center',
+    borderRadius: 12, borderWidth: 1,
+    paddingVertical: 12, alignItems: 'center',
   },
-  rvnReRecordBtnText: { fontSize: 13, fontWeight: '600', color: '#15803D' },
+  rvnReRecordBtnText: { fontSize: 13, fontWeight: '600' },
   rvnDeleteBtn: { paddingVertical: 10, alignItems: 'center' },
-  rvnDeleteBtnText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
+  rvnDeleteBtnText: { fontSize: 13, fontWeight: '600' },
   rvnDoneBtn: {
     paddingVertical: 14, alignItems: 'center',
-    borderRadius: 12, backgroundColor: '#1B4F72',
+    borderRadius: 12,
   },
-  rvnDoneBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  rvnDoneBtnText: { fontSize: 15, fontWeight: '700' },
 
   // Actions sheet
   sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12 },
-  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 12 },
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 12 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   sheetMetaRow: { paddingHorizontal: 20, paddingBottom: 10 },
-  sheetMeta: { fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
-  sheetDivider: { height: StyleSheet.hairlineWidth, backgroundColor: '#E5E7EB', marginHorizontal: 20, marginVertical: 4 },
+  sheetMeta: { fontSize: 13, textAlign: 'center' },
+  sheetDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 20, marginVertical: 4 },
   sheetAction: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 20, paddingVertical: 14,
   },
   sheetActionIcon: { fontSize: 18, width: 28 },
-  sheetActionText: { fontSize: 16, color: '#111827', fontWeight: '500', flex: 1 },
-  sheetActionTextDestructive: { fontSize: 16, color: '#DC2626', fontWeight: '500', flex: 1 },
-  sheetChevron: { fontSize: 12, color: '#9CA3AF' },
+  sheetActionText: { fontSize: 16, fontWeight: '500', flex: 1 },
+  sheetActionTextDestructive: { fontSize: 16, fontWeight: '500', flex: 1 },
+  sheetChevron: { fontSize: 12 },
 
   // History rows
   historyRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 60, paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#F3F4F6', gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth, gap: 8,
   },
-  historyRowCurrent: { backgroundColor: '#EFF6FF' },
-  historyNum: { fontSize: 13, color: '#374151', fontWeight: '500', flex: 1 },
-  historyNumCurrent: { color: '#1D4ED8', fontWeight: '700' },
-  historyStatus: { fontSize: 12, color: '#6B7280' },
-  historyDate: { fontSize: 12, color: '#9CA3AF', minWidth: 60, textAlign: 'right' },
+  historyNum: { fontSize: 13, fontWeight: '500', flex: 1 },
+  historyNumCurrent: { fontWeight: '700' },
+  historyStatus: { fontSize: 12 },
+  historyDate: { fontSize: 12, minWidth: 60, textAlign: 'right' },
 });

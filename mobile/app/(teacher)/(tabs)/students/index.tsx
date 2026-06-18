@@ -9,21 +9,23 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getTeacherStudents } from '@/api/teacher';
-import { C } from '@/constants/colors';
+import { useTheme } from '@/hooks/useTheme';
 import type { TeacherStudentSummary } from '@/types/api';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 
 function ProgressBar({ value, total, color }: { value: number; total: number; color: string }) {
   const pct = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+  const theme = useTheme();
+  const T = theme.colors;
   return (
-    <View style={bar.track}>
+    <View style={[bar.track, { backgroundColor: T.border }]}>
       <View style={[bar.fill, { width: `${pct}%` as `${number}%`, backgroundColor: color }]} />
     </View>
   );
 }
 const bar = StyleSheet.create({
-  track: { height: 4, backgroundColor: C.border, borderRadius: 2, overflow: 'hidden' },
+  track: { height: 4, borderRadius: 2, overflow: 'hidden' },
   fill:  { height: 4, borderRadius: 2 },
 });
 
@@ -36,43 +38,45 @@ function relativeDate(iso: string): string {
 }
 
 function StudentCard({ student, onPress }: { student: TeacherStudentSummary; onPress: () => void }) {
+  const theme = useTheme();
+  const T = theme.colors;
   const allDone = student.pagesAssigned > 0 && student.pagesCompleted >= student.pagesAssigned;
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={[styles.card, { backgroundColor: T.surface }]} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.cardTop}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{student.studentName.charAt(0).toUpperCase()}</Text>
+        <View style={[styles.avatar, { backgroundColor: T.brandPrimarySoft }]}>
+          <Text style={[styles.avatarText, { color: T.brandPrimary }]}>{student.studentName.charAt(0).toUpperCase()}</Text>
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.studentName}>{student.studentName}</Text>
-          <Text style={styles.activityText}>Active {relativeDate(student.lastActivityAt)}</Text>
+          <Text style={[styles.studentName, { color: T.textPrimary }]}>{student.studentName}</Text>
+          <Text style={[styles.activityText, { color: T.textMuted }]}>Active {relativeDate(student.lastActivityAt)}</Text>
         </View>
         {student.pagesNeedsResubmission > 0 && (
-          <View style={styles.needsPracticeBadge}>
-            <Text style={styles.needsPracticeText}>{student.pagesNeedsResubmission} needs practice</Text>
+          <View style={[styles.needsPracticeBadge, { backgroundColor: T.errorBg }]}>
+            <Text style={[styles.needsPracticeText, { color: T.error }]}>{student.pagesNeedsResubmission} needs practice</Text>
           </View>
         )}
-        <Text style={styles.chevron}>›</Text>
+        <Text style={[styles.chevron, { color: T.textMuted }]}>›</Text>
       </View>
 
       <View style={styles.statsRow}>
         <View style={styles.stat}>
-          <Text style={[styles.statNum, { color: C.blue }]}>{student.pagesAssigned}</Text>
-          <Text style={styles.statLabel}>Assigned</Text>
+          <Text style={[styles.statNum, { color: T.brandPrimary }]}>{student.pagesAssigned}</Text>
+          <Text style={[styles.statLabel, { color: T.textMuted }]}>Assigned</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={[styles.statNum, { color: C.green }]}>{student.pagesCompleted}</Text>
-          <Text style={styles.statLabel}>Completed</Text>
+          <Text style={[styles.statNum, { color: T.success }]}>{student.pagesCompleted}</Text>
+          <Text style={[styles.statLabel, { color: T.textMuted }]}>Completed</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={[styles.statNum, { color: C.red }]}>{student.pagesNeedsResubmission}</Text>
-          <Text style={styles.statLabel}>Needs Practice</Text>
+          <Text style={[styles.statNum, { color: T.error }]}>{student.pagesNeedsResubmission}</Text>
+          <Text style={[styles.statLabel, { color: T.textMuted }]}>Needs Practice</Text>
         </View>
         <View style={{ flex: 2 }}>
           <ProgressBar
             value={student.pagesCompleted}
             total={student.pagesAssigned}
-            color={allDone ? C.green : C.blue}
+            color={allDone ? T.success : T.brandPrimary}
           />
         </View>
       </View>
@@ -82,6 +86,8 @@ function StudentCard({ student, onPress }: { student: TeacherStudentSummary; onP
 
 export default function StudentsScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const T = theme.colors;
   const [students, setStudents]     = useState<TeacherStudentSummary[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -116,12 +122,12 @@ export default function StudentsScreen() {
 
   return (
     <FlatList
-      style={styles.list}
+      style={[styles.list, { backgroundColor: T.backgroundAlt }]}
       contentContainerStyle={students.length === 0 ? styles.emptyWrap : styles.listContent}
       data={students}
       keyExtractor={(s) => s.studentId}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.blue} />
+        <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={T.brandPrimary} />
       }
       renderItem={({ item }) => (
         <StudentCard
@@ -136,8 +142,8 @@ export default function StudentsScreen() {
       )}
       ListEmptyComponent={
         <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No students yet</Text>
-          <Text style={styles.emptyBody}>
+          <Text style={[styles.emptyTitle, { color: T.brandPrimary }]}>No students yet</Text>
+          <Text style={[styles.emptyBody, { color: T.textMuted }]}>
             Students will appear here once they are assigned to you.
           </Text>
         </View>
@@ -147,12 +153,11 @@ export default function StudentsScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: C.surface },
+  list: { flex: 1 },
   listContent: { padding: 16, gap: 12 },
   emptyWrap:   { flex: 1 },
 
   card: {
-    backgroundColor: C.white,
     borderRadius: 14,
     padding: 14,
     shadowColor: '#000',
@@ -165,29 +170,27 @@ const styles = StyleSheet.create({
   cardTop:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar:   {
     width: 42, height: 42, borderRadius: 21,
-    backgroundColor: C.blueBg,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarText:  { fontSize: 18, fontWeight: '700', color: C.blue },
+  avatarText:  { fontSize: 18, fontWeight: '700' },
   cardInfo:    { flex: 1 },
-  studentName: { fontSize: 15, fontWeight: '700', color: C.text },
-  activityText:{ fontSize: 12, color: C.textMuted, marginTop: 1 },
+  studentName: { fontSize: 15, fontWeight: '700' },
+  activityText:{ fontSize: 12, marginTop: 1 },
 
   needsPracticeBadge: {
-    backgroundColor: C.redBg,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  needsPracticeText: { fontSize: 10, fontWeight: '700', color: C.red },
-  chevron: { fontSize: 20, color: C.grayLight },
+  needsPracticeText: { fontSize: 10, fontWeight: '700' },
+  chevron: { fontSize: 20 },
 
   statsRow:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stat:      { alignItems: 'center', minWidth: 44 },
   statNum:   { fontSize: 18, fontWeight: '800' },
-  statLabel: { fontSize: 10, color: C.textMuted, marginTop: 1 },
+  statLabel: { fontSize: 10, marginTop: 1 },
 
   empty:      { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.blue, textAlign: 'center' },
-  emptyBody:  { fontSize: 14, color: C.textMuted, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  emptyBody:  { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 });

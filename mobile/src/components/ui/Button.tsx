@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   TouchableOpacityProps,
 } from 'react-native';
+import { useTheme } from '@/hooks/useTheme';
 
 interface Props extends TouchableOpacityProps {
   title: string;
@@ -13,18 +14,35 @@ interface Props extends TouchableOpacityProps {
 }
 
 export function Button({ title, variant = 'primary', loading, style, ...rest }: Props) {
+  const theme = useTheme();
+
+  const bgColor =
+    variant === 'primary'   ? theme.colors.brandPrimary :
+    variant === 'secondary' ? theme.colors.surface :
+                              theme.colors.error;
+
+  const textColor =
+    variant === 'primary'   ? theme.colors.brandOnPrimary :
+    variant === 'secondary' ? theme.colors.textPrimary :
+                              '#FFFFFF';
+
+  const borderColor = variant === 'secondary' ? theme.colors.border : 'transparent';
+
   return (
     <TouchableOpacity
-      style={[styles.base, styles[variant], rest.disabled && styles.disabled, style]}
+      style={[
+        styles.base,
+        { backgroundColor: bgColor, borderColor, borderWidth: variant === 'secondary' ? 1 : 0 },
+        rest.disabled && styles.disabled,
+        style,
+      ]}
       activeOpacity={0.8}
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color="#fff" size="small" />
+        <ActivityIndicator color={textColor} size="small" />
       ) : (
-        <Text style={[styles.text, variant === 'secondary' && styles.secondaryText]}>
-          {title}
-        </Text>
+        <Text style={[styles.text, { color: textColor }]}>{title}</Text>
       )}
     </TouchableOpacity>
   );
@@ -34,15 +52,11 @@ const styles = StyleSheet.create({
   base: {
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 50,
+    minHeight: 52,
   },
-  primary: { backgroundColor: '#1B4F72' },
-  secondary: { backgroundColor: '#E5E7EB' },
-  danger: { backgroundColor: '#DC2626' },
   disabled: { opacity: 0.5 },
-  text: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  secondaryText: { color: '#1B4F72' },
+  text: { fontSize: 15, fontWeight: '600' },
 });

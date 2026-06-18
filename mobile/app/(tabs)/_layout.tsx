@@ -2,8 +2,9 @@ import { Alert, Text, TouchableOpacity } from 'react-native';
 import { Tabs } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useActionCount } from '@/hooks/useActionCount';
+import { useTheme } from '@/hooks/useTheme';
 
-function SignOutButton() {
+function SignOutButton({ color }: { color: string }) {
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -12,31 +13,35 @@ function SignOutButton() {
   };
   return (
     <TouchableOpacity onPress={handleSignOut} style={{ marginRight: 16 }}>
-      <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
+      <Text style={{ color, fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
     </TouchableOpacity>
   );
 }
 
 export default function TabsLayout() {
   const { actionCount } = useActionCount();
+  const theme = useTheme();
 
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: '#1B4F72' },
-        headerTintColor: '#fff',
+        headerStyle: { backgroundColor: theme.colors.headerBg },
+        headerTintColor: theme.colors.headerText,
         headerTitleStyle: { fontWeight: '700' },
-        tabBarActiveTintColor: '#1B4F72',
-        tabBarInactiveTintColor: '#9CA3AF',
-        tabBarStyle: { borderTopColor: '#E5E7EB' },
+        tabBarActiveTintColor: theme.colors.tabActive,
+        tabBarInactiveTintColor: theme.colors.tabInactive,
+        tabBarStyle: {
+          backgroundColor: theme.colors.tabBackground,
+          borderTopColor: theme.colors.border,
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Assignments',
-          headerRight: () => <SignOutButton />,
           tabBarBadge: actionCount > 0 ? actionCount : undefined,
+          headerRight: () => <SignOutButton color={theme.colors.headerText} />,
         }}
       />
       <Tabs.Screen name="quran" options={{ title: 'Quran', headerShown: false }} />

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -11,15 +11,51 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
+import { BookOpen, Eye, ListBullets, Microphone } from 'phosphor-react-native';
 import { getStudentAssignment } from '@/api/assignments';
 import { getQuranPage } from '@/api/quran';
 import { getStudentSubmissions, getSubmissionAttempts } from '@/api/submissions';
-import type { AssignmentSummary, AttemptRow, SubmissionRow } from '@/types/api';
+import { getAnnotations, getVoiceNoteReadUrl } from '@/api/annotations';
+import { getReviewVoiceNote, getReviewVoiceNoteReadUrl } from '@/api/teacher';
+import AnnotationCanvas from '@/components/AnnotationCanvas';
+import AudioPlayerBar from '@/components/AudioPlayerBar';
 import { ErrorScreen } from '@/components/ui/ErrorScreen';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { useTheme } from '@/hooks/useTheme';
+import type {
+  AnnotationRow,
+  AssignmentSummary,
+  AttemptRow,
+  ReviewVoiceNoteRow,
+  SubmissionRow,
+} from '@/types/api';
 
-const SUBMISSION_STATUS_LABELS: Record<string, string> = {
+const GOLD = '#C9A84C';
+
+const MISTAKE_COLORS: Record<string, string> = {
+  tajweed: '#7C3AED', harakat: '#D97706', wrong_word: '#DC2626',
+  wrong_ayah: '#DC2626', makhraj: '#0369A1', madd: '#059669',
+  ghunnah: '#059669', waqf: '#6B7280', pronunciation: '#D97706',
+  memorization: '#DC2626', other: '#6B7280',
+};
+
+const MISTAKE_NAMES: Record<string, string> = {
+  tajweed: 'Tajweed', harakat: 'Harakat', wrong_word: 'Wrong Word',
+  wrong_ayah: 'Wrong Ayah', makhraj: 'Makhraj', madd: 'Madd',
+  ghunnah: 'Ghunnah', waqf: 'Waqf', pronunciation: 'Pronunciation',
+  memorization: 'Memorization', other: 'Other',
+};
+
+const ATTEMPT_LABELS: Record<string, string> = {
+  submitted: 'Under Review',
+  in_review: 'Under Review',
+  reviewed: 'Feedback Ready',
+  needs_resubmission: 'Practice Needed',
+  completed: 'Completed',
+};
+
+const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
   submitted: 'Teacher Reviewing',
   in_review: 'Teacher Reviewing',
@@ -29,94 +65,262 @@ const SUBMISSION_STATUS_LABELS: Record<string, string> = {
   archived: 'Archived',
 };
 
-const ATTEMPT_STATUS_LABELS: Record<string, string> = {
-  submitted: 'Teacher Reviewing',
-  in_review: 'Teacher Reviewing',
-  reviewed: 'Feedback Available',
-  needs_resubmission: 'Needs Practice',
-  completed: 'Completed',
-};
-
 function relativeDate(iso: string | null): string {
   if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  return `${days}d ago`;
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (d === 0) return 'Today';
+  if (d === 1) return 'Yesterday';
+  return `${d}d ago`;
 }
 
-export default function AssignmentDetailScreen() {
+// ── Annotation detail sheet ───────────────────────────────────────────────────
+
+function AnnotationDetailSheet({
+  annotation,
+  onClose,
+}: {
+  annotation: AnnotationRow;
+  onClose: () => void;
+}) {
+  const theme = useTheme('dark');
+  const T = theme.colors;
+  const insets = useSafeAreaInsets();
+
+  const color = annotation.mistakeType
+    ? (MISTAKE_COLORS[annotation.mistakeType] ?? T.textMuted)
+    : T.brandPrimary;
+  const label = annotation.quickLabel
+    ?? (annotation.mistakeType ? MISTAKE_NAMES[annotation.mistakeType] : null);
+
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
+  const [loadingVoice, setLoadingVoice] = useState(false);
+  const player = useAudioPlayer(voiceUrl ?? '');
+  const playerStatus = useAudioPlayerStatus(player);
+
+  useEffect(() => { if (voiceUrl) player.play(); }, [voiceUrl, player]);
+
+  const handlePlayVoiceNote = async () => {
+    if (voiceUrl) { playerStatus.playing ? player.pause() : player.play(); return; }
+    setLoadingVoice(true);
+    try {
+      const key = `teacher-voice-notes/${annotation.teacherId}/${annotation.submissionId}/${annotation.submissionAttemptId}/${annotation.id}.m4a`;
+      const { url } = await getVoiceNoteReadUrl(key);
+      setVoiceUrl(url);
+    } catch {
+      Alert.alert('Playback Error', 'Could not load voice note.');
+    } finally {
+      setLoadingVoice(false);
+    }
+  };
+
+  const hasContent = label || annotation.noteText || annotation.hasVoiceNote;
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={[ds.overlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+        <View style={[ds.sheet, { backgroundColor: T.surface, paddingBottom: insets.bottom + 8 }]}>
+          <View style={[ds.handle, { backgroundColor: T.border }]} />
+          <View style={[ds.header, { borderBottomColor: T.divider }]}>
+            <View style={[ds.colorBar, { backgroundColor: color }]} />
+            <Text style={[ds.title, { color: T.textPrimary }]}>Teacher's Note</Text>
+            <TouchableOpacity onPress={onClose} style={ds.closeBtn}>
+              <Text style={[ds.closeBtnText, { color: T.textMuted }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          {!hasContent ? (
+            <View style={ds.emptyBody}>
+              <Text style={[ds.emptyText, { color: T.textDisabled }]}>Freehand mark — no note added</Text>
+            </View>
+          ) : (
+            <View style={ds.body}>
+              {label && (
+                <View style={[ds.chip, { backgroundColor: color + '18', borderColor: color + '44' }]}>
+                  <Text style={[ds.chipText, { color }]}>{label}</Text>
+                </View>
+              )}
+              {annotation.noteText && (
+                <Text style={[ds.noteText, { color: T.textSecondary }]}>{annotation.noteText}</Text>
+              )}
+              {annotation.hasVoiceNote && (
+                <TouchableOpacity
+                  style={[ds.voiceBtn, { backgroundColor: T.infoBg, borderColor: T.info }]}
+                  onPress={handlePlayVoiceNote}
+                  disabled={loadingVoice}
+                >
+                  {loadingVoice
+                    ? <ActivityIndicator size="small" color={T.info} />
+                    : <Text style={[ds.voiceBtnText, { color: T.info }]}>
+                        {playerStatus.playing ? '⏸  Pause Voice Note' : '▶  Play Voice Note'}
+                      </Text>
+                  }
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          <TouchableOpacity
+            style={[ds.doneBtn, { backgroundColor: T.brandPrimary, marginHorizontal: 16 }]}
+            onPress={onClose}
+          >
+            <Text style={[ds.doneBtnText, { color: T.brandOnPrimary }]}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+
+type Mode = 'page' | 'feedback';
+
+export default function AssignmentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const theme = useTheme();
+  const theme = useTheme('dark');
   const T = theme.colors;
 
-  const [assignment, setAssignment] = useState<AssignmentSummary | null>(null);
-  const [submission, setSubmission] = useState<SubmissionRow | null>(null);
-  const [attempts, setAttempts] = useState<AttemptRow[]>([]);
+  // ── Core data ───────────────────────────────────────────────────────────────
+  const [assignment, setAssignment]     = useState<AssignmentSummary | null>(null);
+  const [submission, setSubmission]     = useState<SubmissionRow | null>(null);
+  const [attempts, setAttempts]         = useState<AttemptRow[]>([]);
   const [pageImageUrl, setPageImageUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [attemptsOpen, setAttemptsOpen] = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
 
+  // ── UI state ────────────────────────────────────────────────────────────────
+  const [mode, setMode]                   = useState<Mode>('page');
+  const [historyOpen, setHistoryOpen]     = useState(false);
+  const [canvasSize, setCanvasSize]       = useState<{ width: number; height: number } | null>(null);
+  const [selectedAnnotation, setSelectedAnnotation] = useState<AnnotationRow | null>(null);
+
+  // ── Feedback state ──────────────────────────────────────────────────────────
+  const [selectedAttemptId, setSelectedAttemptId]   = useState<string | null>(null);
+  const [annotations, setAnnotations]               = useState<AnnotationRow[]>([]);
+  const [loadingAnnotations, setLoadingAnnotations] = useState(false);
+  const [reviewVoiceNote, setReviewVoiceNote]       = useState<ReviewVoiceNoteRow | null>(null);
+  const [rvnPlayUrl, setRvnPlayUrl]                 = useState<string | null>(null);
+  const rvnPlayer       = useAudioPlayer(rvnPlayUrl ?? '');
+  const rvnPlayerStatus = useAudioPlayerStatus(rvnPlayer);
+
+  // ── Load assignment + submission + attempts + page image ─────────────────
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     setError(null);
     try {
-      const [asgn, allSubmissions] = await Promise.all([
+      const [asgn, allSubs] = await Promise.all([
         getStudentAssignment(id),
         getStudentSubmissions(),
       ]);
       setAssignment(asgn);
 
-      const existing = allSubmissions.find((s) => s.assignmentId === asgn.id) ?? null;
-      setSubmission(existing);
+      const sub = allSubs.find((s) => s.assignmentId === asgn.id) ?? null;
+      setSubmission(sub);
 
-      if (existing) {
+      if (sub) {
         try {
-          const atts = await getSubmissionAttempts(existing.id);
+          const atts = await getSubmissionAttempts(sub.id);
           setAttempts(atts);
         } catch { /* non-fatal */ }
-      } else {
-        setAttempts([]);
       }
 
       if (asgn.pageNumber != null) {
         try {
           const page = await getQuranPage(asgn.pageNumber);
           setPageImageUrl(page.imageUrl);
-        } catch {
-          setPageImageUrl(null);
-        }
+        } catch { /* non-fatal */ }
       }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to load assignment');
+
+      // Decide initial mode
+      const hasFeedback = sub && ['reviewed', 'completed', 'needs_resubmission'].includes(sub.status);
+      if (hasFeedback && sub?.currentAttemptId) {
+        setMode('feedback');
+        setSelectedAttemptId(sub.currentAttemptId);
+      } else {
+        setMode('page');
+        setSelectedAttemptId(sub?.currentAttemptId ?? null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(true); }, [load]));
 
-  // Reload silently on focus so status updates after recording or viewing feedback
-  useFocusEffect(
-    useCallback(() => { load(true); }, [load]),
-  );
+  // ── Load annotations + teacher voice note when entering feedback mode ─────
+  useEffect(() => {
+    if (mode !== 'feedback' || !submission || !selectedAttemptId) return;
 
-  const canRecord =
-    !submission ||
-    submission.status === 'needs_resubmission' ||
-    submission.status === 'draft';
+    let cancelled = false;
+    setAnnotations([]);
+    setLoadingAnnotations(true);
+    setReviewVoiceNote(null);
+    setRvnPlayUrl(null);
 
-  const canViewFeedback =
-    submission !== null &&
-    submission.currentAttemptId !== null &&
-    (submission.status === 'reviewed' ||
-      submission.status === 'completed' ||
-      submission.status === 'needs_resubmission');
+    (async () => {
+      try {
+        const all: AnnotationRow[] = [];
+        let cursor: string | undefined;
+        let hasMore = true;
+        while (hasMore) {
+          const result = await getAnnotations(submission.id, selectedAttemptId, cursor);
+          all.push(...result.data);
+          hasMore = result.hasMore;
+          cursor = result.nextCursor;
+        }
+        if (!cancelled) setAnnotations(all);
+      } catch { /* non-fatal */ } finally {
+        if (!cancelled) setLoadingAnnotations(false);
+      }
+      try {
+        const rvn = await getReviewVoiceNote(submission.id, selectedAttemptId);
+        if (!cancelled) setReviewVoiceNote(rvn);
+      } catch { /* no voice note */ }
+    })();
 
+    return () => { cancelled = true; };
+  }, [mode, submission, selectedAttemptId]);
+
+  // ── Teacher voice note playback ───────────────────────────────────────────
+  useEffect(() => {
+    if (!rvnPlayUrl) return;
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: false,
+      shouldRouteThroughEarpiece: false,
+      interruptionMode: 'duckOthers',
+    }).then(() => rvnPlayer.play()).catch(() => {});
+  }, [rvnPlayUrl, rvnPlayer]);
+
+  const handlePlayRvn = async () => {
+    if (rvnPlayerStatus.playing) { rvnPlayer.pause(); return; }
+    try {
+      if (!rvnPlayUrl && reviewVoiceNote) {
+        const { url } = await getReviewVoiceNoteReadUrl(reviewVoiceNote.audioStorageKey);
+        setRvnPlayUrl(url);
+        return;
+      }
+      await setAudioModeAsync({
+        playsInSilentMode: true, allowsRecording: false,
+        shouldRouteThroughEarpiece: false, interruptionMode: 'duckOthers',
+      });
+      rvnPlayer.play();
+    } catch {
+      Alert.alert('Playback Error', 'Could not load teacher voice note.');
+    }
+  };
+
+  // ── Switch to a different attempt's feedback ──────────────────────────────
+  const handleSelectAttempt = (attempt: AttemptRow) => {
+    setHistoryOpen(false);
+    setSelectedAttemptId(attempt.id);
+    setMode('feedback');
+  };
+
+  // ── Navigate to recording room ────────────────────────────────────────────
   const handleRecord = () => {
     router.push({
       pathname: '/assignments/[id]/record',
@@ -124,103 +328,115 @@ export default function AssignmentDetailScreen() {
     });
   };
 
-  const handleViewFeedback = () => {
-    if (!submission?.currentAttemptId) return;
-    const currentAttempt = attempts.find((a) => a.id === submission.currentAttemptId);
-    router.push({
-      pathname: '/assignments/[id]/feedback/[attemptId]',
-      params: {
-        id,
-        attemptId: submission.currentAttemptId,
-        submissionId: submission.id,
-        pageNumber: assignment?.pageNumber?.toString() ?? '',
-        attemptNumber: currentAttempt?.attemptNumber?.toString() ?? '',
-      },
-    });
-  };
-
-  const handleViewAttemptFeedback = (attempt: AttemptRow) => {
-    if (!submission) return;
-    setAttemptsOpen(false);
-    router.push({
-      pathname: '/assignments/[id]/feedback/[attemptId]',
-      params: {
-        id,
-        attemptId: attempt.id,
-        submissionId: submission.id,
-        pageNumber: assignment?.pageNumber?.toString() ?? '',
-        attemptNumber: attempt.attemptNumber.toString(),
-      },
-    });
-  };
-
-  if (loading) return <LoadingScreen message="Loading assignment…" />;
+  // ── Derived ───────────────────────────────────────────────────────────────
+  if (loading) return <LoadingScreen message="Loading…" />;
   if (error || !assignment)
     return <ErrorScreen message={error ?? 'Assignment not found'} onRetry={() => load()} />;
 
-  const title =
-    assignment.title && assignment.title !== `Page ${assignment.pageNumber}`
-      ? assignment.title
-      : assignment.surahNameEnglish && assignment.pageNumber != null
-        ? `${assignment.surahNameEnglish} — Page ${assignment.pageNumber}`
-        : assignment.pageNumber != null
-          ? `Page ${assignment.pageNumber}`
-          : 'Assignment';
+  const hasFeedback = submission !== null &&
+    ['reviewed', 'completed', 'needs_resubmission'].includes(submission.status);
+
+  const canRecord = !submission ||
+    submission.status === 'draft' ||
+    submission.status === 'needs_resubmission';
+
+  const hasAttempts = attempts.length > 0;
+
+  const title = assignment.title && assignment.title !== `Page ${assignment.pageNumber}`
+    ? assignment.title
+    : assignment.surahNameEnglish && assignment.pageNumber != null
+      ? `${assignment.surahNameEnglish} — Page ${assignment.pageNumber}`
+      : assignment.pageNumber != null ? `Page ${assignment.pageNumber}` : 'Assignment';
+
   const statusLabel = submission
-    ? (SUBMISSION_STATUS_LABELS[submission.status] ?? submission.status)
+    ? (STATUS_LABELS[submission.status] ?? submission.status)
     : null;
   const statusChip = submission
     ? (theme.chips[submission.status as keyof typeof theme.chips] ?? null)
     : null;
-  const hasAttempts = attempts.length > 0;
 
-  // Bottom bar layout logic:
-  // canRecord + canViewFeedback (needs_resubmission) → [📋] [🎙 Record flex:1] [Feedback]
-  // canRecord only (no sub / draft)                  → [🎙 Start/Record flex:1]
-  // canViewFeedback only (reviewed/completed)        → [📋] [View Feedback flex:1]
-  // neither (submitted/in_review)                   → [📋?] [status indicator flex:1]
+  const labelledAnnotations = annotations.filter(
+    (a) => a.quickLabel || a.mistakeType || a.noteText || a.hasVoiceNote,
+  );
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: T.surface }]}>
+    <View style={[s.root, { paddingTop: insets.top, backgroundColor: T.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* ── Top bar ── */}
-      <View style={[styles.topBar, { backgroundColor: T.surface, borderBottomColor: T.border }]}>
-        <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()}>
-          <Text style={[styles.topBarBack, { color: T.brandPrimary }]}>‹</Text>
+      <View style={[s.topBar, { backgroundColor: T.surface, borderBottomColor: T.border }]}>
+        <TouchableOpacity style={s.topBarBtn} onPress={() => router.back()}>
+          <Text style={[s.topBarBack, { color: T.brandPrimary }]}>‹</Text>
         </TouchableOpacity>
-        <View style={styles.topBarCenter}>
-          <Text style={[styles.topBarTitle, { color: T.textPrimary }]} numberOfLines={1}>{title}</Text>
-          {assignment.surahNameEnglish != null && (
-            <Text style={[styles.topBarSub, { color: T.textMuted }]}>{assignment.surahNameEnglish}</Text>
+        <View style={s.topBarCenter}>
+          <Text style={[s.topBarTitle, { color: T.textPrimary }]} numberOfLines={1}>{title}</Text>
+          {assignment.surahNameEnglish && (
+            <Text style={[s.topBarSub, { color: T.textMuted }]}>
+              {assignment.surahNameEnglish}
+              {selectedAttemptId && attempts.length > 1
+                ? ` · Attempt ${attempts.find((a) => a.id === selectedAttemptId)?.attemptNumber ?? ''}`
+                : ''}
+            </Text>
           )}
         </View>
         {statusLabel && statusChip && (
-          <View style={[styles.statusPill, { backgroundColor: statusChip.bg }]}>
-            <Text style={[styles.statusPillText, { color: statusChip.text }]} numberOfLines={1}>{statusLabel}</Text>
+          <View style={[s.statusPill, { backgroundColor: statusChip.bg }]}>
+            <Text style={[s.statusPillText, { color: statusChip.text }]} numberOfLines={1}>
+              {statusLabel}
+            </Text>
           </View>
         )}
       </View>
 
-      {/* ── Full-screen page image ── */}
-      <View style={[styles.canvasArea, { backgroundColor: T.backgroundAlt }]}>
-        {pageImageUrl ? (
-          <Image
-            source={{ uri: pageImageUrl }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="contain"
+      {/* ── Canvas area ── */}
+      <View
+        style={[s.canvas, { backgroundColor: T.backgroundAlt }]}
+        onLayout={(e) => setCanvasSize({
+          width: e.nativeEvent.layout.width,
+          height: e.nativeEvent.layout.height,
+        })}
+      >
+        {loadingAnnotations && mode === 'feedback' && (
+          <View style={s.canvasSpinner}>
+            <ActivityIndicator color={T.brandPrimary} />
+          </View>
+        )}
+
+        {canvasSize && (
+          <AnnotationCanvas
+            width={canvasSize.width}
+            height={canvasSize.height}
+            imageUrl={pageImageUrl ?? undefined}
+            savedAnnotations={mode === 'feedback' ? annotations : []}
+            localAnnotations={[]}
+            drawEnabled={false}
+            readOnly
+            onAnnotationTap={mode === 'feedback' ? setSelectedAnnotation : undefined}
           />
-        ) : (
-          <View style={styles.pagePlaceholder}>
-            <Text style={[styles.pagePlaceholderText, { color: T.textMuted }]}>
-              {assignment.pageNumber ? `Page ${assignment.pageNumber}` : 'Page unavailable'}
+        )}
+
+        {/* Feedback mode overlays */}
+        {mode === 'feedback' && !loadingAnnotations && annotations.length > 0 && (
+          <View style={s.tapHint}>
+            <Text style={[s.tapHintText, { color: T.textSecondary, backgroundColor: T.surfaceOverlay, borderColor: T.border }]}>
+              Tap a mark to see feedback
             </Text>
           </View>
         )}
 
-        {assignment.instructions && (
-          <View style={styles.instructionsOverlay}>
-            <Text style={styles.instructionsText} numberOfLines={3}>
+        {mode === 'feedback' && !loadingAnnotations && annotations.length === 0 && (
+          <View style={s.tapHint}>
+            <Text style={[s.tapHintText, { color: T.textMuted, backgroundColor: T.surfaceOverlay, borderColor: T.border }]}>
+              No marks on this attempt
+            </Text>
+          </View>
+        )}
+
+        {/* Page mode — instructions */}
+        {mode === 'page' && assignment.instructions && (
+          <View style={s.instructionsOverlay}>
+            <Text style={s.instructionsText} numberOfLines={3}>
               📝 {assignment.instructions}
             </Text>
           </View>
@@ -228,149 +444,168 @@ export default function AssignmentDetailScreen() {
       </View>
 
       {/* ── Bottom bar ── */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8, backgroundColor: T.surface, borderTopColor: T.border }]}>
+      <View style={[s.bottomBar, { paddingBottom: insets.bottom + 8, backgroundColor: T.surface, borderTopColor: T.border }]}>
 
-        {hasAttempts && (
-          <TouchableOpacity style={[styles.attemptsBtn, { backgroundColor: T.backgroundAlt }]} onPress={() => setAttemptsOpen(true)}>
-            <Text style={styles.attemptsBtnIcon}>📋</Text>
-            {attempts.length > 1 && (
-              <View style={[styles.attemptsBadge, { backgroundColor: T.brandPrimary }]}>
-                <Text style={[styles.attemptsBadgeText, { color: T.brandOnPrimary }]}>{attempts.length}</Text>
+        {/* Mode tabs */}
+        <View style={s.modeTabs}>
+          <TouchableOpacity
+            style={[s.modeTab, mode === 'page' && s.modeTabActive]}
+            onPress={() => setMode('page')}
+          >
+            <BookOpen
+              size={22}
+              color={mode === 'page' ? GOLD : (T.textMuted as string)}
+              weight={mode === 'page' ? 'fill' : 'regular'}
+            />
+            <Text style={[s.modeLabel, { color: mode === 'page' ? GOLD : T.textMuted }]}>Page</Text>
+          </TouchableOpacity>
+
+          {hasFeedback && (
+            <TouchableOpacity
+              style={[s.modeTab, mode === 'feedback' && s.modeTabActiveFeedback]}
+              onPress={() => setMode('feedback')}
+            >
+              <Eye
+                size={22}
+                color={mode === 'feedback' ? T.info : (T.textMuted as string)}
+                weight={mode === 'feedback' ? 'fill' : 'regular'}
+              />
+              <View style={s.modeTabLabelRow}>
+                <Text style={[s.modeLabel, { color: mode === 'feedback' ? T.info : T.textMuted }]}>Feedback</Text>
+                {annotations.length > 0 && mode === 'feedback' && (
+                  <View style={[s.annotationBadge, { backgroundColor: T.info }]}>
+                    <Text style={[s.annotationBadgeText, { color: '#fff' }]}>{annotations.length}</Text>
+                  </View>
+                )}
               </View>
+            </TouchableOpacity>
+          )}
+
+          {hasAttempts && (
+            <TouchableOpacity
+              style={s.modeTab}
+              onPress={() => setHistoryOpen(true)}
+            >
+              <ListBullets size={22} color={T.textMuted as string} />
+              <Text style={[s.modeLabel, { color: T.textMuted }]}>Past</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Audio player — shown in feedback mode, lives in the bar */}
+        {mode === 'feedback' && submission && selectedAttemptId && (
+          <View style={s.barAudio}>
+            <AudioPlayerBar
+              submissionId={submission.id}
+              attemptId={selectedAttemptId}
+              compact
+            />
+            {reviewVoiceNote && (
+              <TouchableOpacity
+                style={[s.rvnBtn, { backgroundColor: T.infoBg, borderColor: T.info }]}
+                onPress={handlePlayRvn}
+              >
+                <Text style={[s.rvnBtnText, { color: T.info }]}>
+                  {rvnPlayerStatus.playing ? '⏸' : '🎙'}
+                </Text>
+              </TouchableOpacity>
             )}
+          </View>
+        )}
+
+        {/* Spacer pushes record button to the right */}
+        <View style={{ flex: 1 }} />
+
+        {/* Record button */}
+        {canRecord && (
+          <TouchableOpacity style={[s.recordBtn, { backgroundColor: GOLD }]} onPress={handleRecord}>
+            <Microphone size={20} color="#000" weight="fill" />
           </TouchableOpacity>
         )}
 
-        {canRecord && canViewFeedback ? (
-          // needs_resubmission: record is primary, feedback secondary
-          <>
-            <TouchableOpacity style={[styles.recordBtn, { backgroundColor: T.brandPrimary }]} onPress={handleRecord}>
-              <Text style={[styles.recordBtnText, { color: T.brandOnPrimary }]}>🎙  Record New Attempt</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.feedbackBtnSecondary, { borderColor: T.info }]} onPress={handleViewFeedback}>
-              <Text style={[styles.feedbackBtnSecondaryText, { color: T.info }]}>Feedback</Text>
-            </TouchableOpacity>
-          </>
-        ) : canRecord ? (
-          // no submission or draft: full-width record button
-          <TouchableOpacity style={[styles.recordBtn, { backgroundColor: T.brandPrimary }]} onPress={handleRecord}>
-            <Text style={[styles.recordBtnText, { color: T.brandOnPrimary }]}>
-              {submission ? '🎙  Record New Attempt' : '🎙  Start Recording'}
-            </Text>
-          </TouchableOpacity>
-        ) : canViewFeedback ? (
-          // reviewed or completed: feedback is the only action
-          <TouchableOpacity style={[styles.feedbackBtnPrimary, { backgroundColor: T.info }]} onPress={handleViewFeedback}>
-            <Text style={[styles.feedbackBtnPrimaryText, { color: T.textInverse }]}>View Teacher Feedback</Text>
-          </TouchableOpacity>
-        ) : (
-          // submitted / in_review: waiting state
-          <View style={styles.statusIndicator}>
-            {submission?.status === 'in_review' && (
-              <ActivityIndicator
-                size="small"
-                color={T.warning}
-                style={styles.statusSpinner}
-              />
-            )}
-            <Text style={[styles.statusIndicatorText, { color: T.textMuted }]}>{statusLabel}</Text>
-          </View>
+        {/* Waiting spinner when submitted / in_review */}
+        {!canRecord && !hasFeedback && submission && (
+          <ActivityIndicator size="small" color={T.warning} style={s.waitingSpinner} />
         )}
       </View>
 
-      {/* ── Attempt history sheet ── */}
+      {/* ── Past attempts sheet ── */}
       <Modal
-        visible={attemptsOpen}
+        visible={historyOpen}
         animationType="slide"
         transparent
-        onRequestClose={() => setAttemptsOpen(false)}
+        onRequestClose={() => setHistoryOpen(false)}
       >
         <TouchableOpacity
-          style={styles.sheetOverlay}
+          style={s.sheetOverlay}
           activeOpacity={1}
-          onPress={() => setAttemptsOpen(false)}
+          onPress={() => setHistoryOpen(false)}
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.sheet, { paddingBottom: insets.bottom + 12, backgroundColor: T.surface }]}
+            style={[s.sheet, { paddingBottom: insets.bottom + 12, backgroundColor: T.surface }]}
           >
-            <View style={[styles.sheetHandle, { backgroundColor: T.border }]} />
-            <Text style={[styles.sheetTitle, { color: T.textPrimary }]}>Your Attempts</Text>
-
-            {(assignment.dueAt || assignment.instructions) && (
-              <View style={styles.sheetMeta}>
-                {assignment.dueAt && (
-                  <Text style={[styles.sheetMetaText, { color: T.textMuted }]}>
-                    Due {new Date(assignment.dueAt).toLocaleDateString()}
-                  </Text>
-                )}
-                {assignment.instructions && (
-                  <Text style={[styles.sheetInstructions, { color: T.textSecondary }]}>{assignment.instructions}</Text>
-                )}
-              </View>
-            )}
-
-            <ScrollView
-              style={styles.sheetScroll}
-              showsVerticalScrollIndicator={false}
-            >
-              {attempts.length === 0 ? (
-                <Text style={[styles.sheetEmpty, { color: T.textMuted }]}>No attempts yet.</Text>
-              ) : (
-                [...attempts].reverse().map((a) => {
-                  const hasFeedback =
-                    a.status === 'reviewed' ||
-                    a.status === 'completed' ||
-                    a.status === 'needs_resubmission';
-                  const isCurrent = a.id === submission?.currentAttemptId;
-                  const aChip = theme.chips[a.status as keyof typeof theme.chips];
-                  const aChipBg = aChip?.bg ?? T.backgroundAlt;
-                  const aChipText = aChip?.text ?? T.textMuted;
-                  return (
-                    <TouchableOpacity
-                      key={a.id}
-                      style={[
-                        styles.attemptRow,
-                        { borderTopColor: T.backgroundAlt },
-                        isCurrent && { backgroundColor: T.brandPrimarySoft, marginHorizontal: -20, paddingHorizontal: 20 },
-                      ]}
-                      onPress={() => hasFeedback && handleViewAttemptFeedback(a)}
-                      disabled={!hasFeedback}
-                      activeOpacity={hasFeedback ? 0.6 : 1}
-                    >
-                      <View style={styles.attemptRowInfo}>
-                        <Text style={[
-                          styles.attemptNum,
-                          { color: T.textSecondary },
-                          isCurrent && { color: T.brandPrimary, fontWeight: '700' },
-                        ]}>
-                          Attempt {a.attemptNumber}
-                          {isCurrent ? ' · current' : ''}
-                        </Text>
-                        <Text style={[styles.attemptDate, { color: T.textMuted }]}>{relativeDate(a.submittedAt)}</Text>
-                      </View>
-                      <View style={[styles.attemptStatusBadge, { backgroundColor: aChipBg }]}>
-                        <Text style={[styles.attemptStatusText, { color: aChipText }]}>
-                          {ATTEMPT_STATUS_LABELS[a.status] ?? a.status}
-                        </Text>
-                      </View>
-                      {hasFeedback && <Text style={[styles.attemptChevron, { color: T.textMuted }]}>›</Text>}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
+            <View style={[s.sheetHandle, { backgroundColor: T.border }]} />
+            <Text style={[s.sheetTitle, { color: T.textPrimary }]}>Your Attempts</Text>
+            <ScrollView style={s.sheetScroll} showsVerticalScrollIndicator={false}>
+              {[...attempts].reverse().map((a) => {
+                const isCurrent  = a.id === submission?.currentAttemptId;
+                const isSelected = a.id === selectedAttemptId;
+                const chip     = theme.chips[a.status as keyof typeof theme.chips];
+                const chipBg   = chip?.bg   ?? T.backgroundAlt;
+                const chipText = chip?.text ?? T.textMuted;
+                return (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[
+                      s.attemptRow,
+                      { borderTopColor: T.divider },
+                      isSelected && { backgroundColor: T.brandPrimarySoft, marginHorizontal: -20, paddingHorizontal: 20 },
+                    ]}
+                    onPress={() => handleSelectAttempt(a)}
+                    activeOpacity={0.6}
+                  >
+                    <View style={s.attemptInfo}>
+                      <Text style={[
+                        s.attemptNum,
+                        { color: isCurrent ? T.brandPrimary : T.textSecondary },
+                        isCurrent && { fontWeight: '700' },
+                      ]}>
+                        Attempt {a.attemptNumber}
+                        {isCurrent ? ' · current' : ''}
+                      </Text>
+                      <Text style={[s.attemptDate, { color: T.textMuted }]}>{relativeDate(a.submittedAt)}</Text>
+                    </View>
+                    <View style={[s.attemptBadge, { backgroundColor: chipBg }]}>
+                      <Text style={[s.attemptBadgeText, { color: chipText }]}>
+                        {ATTEMPT_LABELS[a.status] ?? a.status}
+                      </Text>
+                    </View>
+                    <Text style={[s.attemptChev, { color: T.textMuted }]}>›</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* ── Annotation detail ── */}
+      {selectedAnnotation && (
+        <AnnotationDetailSheet
+          annotation={selectedAnnotation}
+          onClose={() => setSelectedAnnotation(null)}
+        />
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
   root: { flex: 1 },
 
-  // Top bar
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -384,130 +619,116 @@ const styles = StyleSheet.create({
   topBarTitle: { fontSize: 15, fontWeight: '700' },
   topBarSub: { fontSize: 12, marginTop: 1 },
   statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-    maxWidth: 120,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 12, marginRight: 8, maxWidth: 130,
   },
   statusPillText: { fontSize: 10, fontWeight: '700' },
 
-  // Canvas / page
-  canvasArea: {
-    flex: 1,
-    overflow: 'hidden',
+  canvas: { flex: 1, overflow: 'hidden' },
+  canvasSpinner: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center', zIndex: 1,
   },
-  pagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  pagePlaceholderText: { fontSize: 13 },
+
+  tapHint: { position: 'absolute', top: 10, left: 0, right: 0, alignItems: 'center' },
+  tapHintText: {
+    fontSize: 12, paddingHorizontal: 12, paddingVertical: 4,
+    borderRadius: 10, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth,
+  },
+
+  barAudio: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 6,
+  },
+  rvnBtn: {
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: 10, borderWidth: 1,
+  },
+  rvnBtnText: { fontSize: 14, fontWeight: '600' },
+
   instructionsOverlay: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    right: 12,
+    position: 'absolute', bottom: 12, left: 12, right: 12,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
   },
   instructionsText: { fontSize: 13, color: '#fff', lineHeight: 18 },
 
-  // Bottom bar
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 4,
   },
-  attemptsBtn: {
-    width: 44,
-    height: 44,
+  modeTabs: { flexDirection: 'row', gap: 4 },
+  modeTab: {
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 10,
+    gap: 2,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  attemptsBtnIcon: { fontSize: 20 },
-  attemptsBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    borderRadius: 6,
-    minWidth: 14,
-    paddingHorizontal: 2,
-    alignItems: 'center',
+  modeTabActive: { borderBottomColor: GOLD },
+  modeTabActiveFeedback: { borderBottomColor: '#0369A1' },
+  modeTabLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  modeLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.2 },
+  annotationBadge: {
+    minWidth: 16, height: 16, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
-  attemptsBadgeText: { fontSize: 9, fontWeight: '800' },
+  annotationBadgeText: { fontSize: 9, fontWeight: '800' },
 
   recordBtn: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 11,
-    alignItems: 'center',
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
   },
-  recordBtnText: { fontSize: 14, fontWeight: '700' },
+  waitingSpinner: { marginRight: 8 },
 
-  feedbackBtnPrimary: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  feedbackBtnPrimaryText: { fontSize: 14, fontWeight: '700' },
-
-  feedbackBtnSecondary: {
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1.5,
-  },
-  feedbackBtnSecondaryText: { fontSize: 13, fontWeight: '700' },
-
-  statusIndicator: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 11,
-  },
-  statusSpinner: { marginRight: 8 },
-  statusIndicatorText: { fontSize: 14, fontWeight: '500' },
-
-  // Attempt history sheet
   sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 12,
-    maxHeight: '75%',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingTop: 12, maxHeight: '70%',
   },
-  sheetHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   sheetTitle: { fontSize: 17, fontWeight: '700', paddingHorizontal: 20, marginBottom: 8 },
-  sheetMeta: { paddingHorizontal: 20, marginBottom: 12, gap: 4 },
-  sheetMetaText: { fontSize: 12 },
-  sheetInstructions: { fontSize: 13, lineHeight: 18, marginTop: 4 },
   sheetScroll: { paddingHorizontal: 20 },
-  sheetEmpty: { fontSize: 14, paddingVertical: 20, textAlign: 'center' },
 
   attemptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 13,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 10,
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 13, borderTopWidth: 1, gap: 10,
   },
-  attemptRowInfo: { flex: 1 },
-  attemptNum: { fontSize: 14, fontWeight: '600' },
+  attemptInfo: { flex: 1 },
+  attemptNum:  { fontSize: 14, fontWeight: '500' },
   attemptDate: { fontSize: 12, marginTop: 2 },
-  attemptStatusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  attemptStatusText: { fontSize: 11, fontWeight: '700' },
-  attemptChevron: { fontSize: 20 },
+  attemptBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  attemptBadgeText: { fontSize: 11, fontWeight: '700' },
+  attemptChev: { fontSize: 20 },
+});
+
+// ── Annotation detail sheet styles ────────────────────────────────────────────
+
+const ds = StyleSheet.create({
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  sheet:   { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8 },
+  handle:  { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
+  header:  { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 10, borderBottomWidth: 1 },
+  colorBar:    { width: 4, height: 20, borderRadius: 2 },
+  title:       { fontSize: 16, fontWeight: '700', flex: 1 },
+  closeBtn:    { padding: 4 },
+  closeBtnText:{ fontSize: 18 },
+  emptyBody:   { padding: 24, alignItems: 'center' },
+  emptyText:   { fontSize: 14 },
+  body:        { padding: 16, gap: 12 },
+  chip:        { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
+  chipText:    { fontSize: 14, fontWeight: '700' },
+  noteText:    { fontSize: 15, lineHeight: 22 },
+  voiceBtn:    { borderRadius: 10, borderWidth: 1, paddingVertical: 12, alignItems: 'center' },
+  voiceBtnText:{ fontSize: 14, fontWeight: '600' },
+  doneBtn:     { paddingVertical: 13, alignItems: 'center', borderRadius: 12, marginTop: 4 },
+  doneBtnText: { fontSize: 15, fontWeight: '700' },
 });

@@ -1,5 +1,6 @@
 import { Alert, Text, TouchableOpacity } from 'react-native';
 import { Tabs } from 'expo-router';
+import { Bell, Tray, Users } from 'phosphor-react-native';
 import { supabase } from '@/lib/supabase';
 import { useUnreadCount } from '@/hooks/useUnreadCount';
 import { useTheme } from '@/hooks/useTheme';
@@ -21,18 +22,19 @@ function SignOutButton({ color }: { color: string }) {
 export default function TeacherTabsLayout() {
   const { unreadCount } = useUnreadCount();
   const theme = useTheme();
+  const T = theme.colors;
 
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.headerBg },
-        headerTintColor: theme.colors.headerText,
+        headerStyle: { backgroundColor: T.headerBg },
+        headerTintColor: T.headerText,
         headerTitleStyle: { fontWeight: '700' },
-        tabBarActiveTintColor: theme.colors.tabActive,
-        tabBarInactiveTintColor: theme.colors.tabInactive,
+        tabBarActiveTintColor: T.tabActive,
+        tabBarInactiveTintColor: T.tabInactive,
         tabBarStyle: {
-          backgroundColor: theme.colors.tabBackground,
-          borderTopColor: theme.colors.border,
+          backgroundColor: T.tabBackground,
+          borderTopColor: T.border,
         },
       }}
     >
@@ -40,18 +42,30 @@ export default function TeacherTabsLayout() {
         name="queue"
         options={{
           title: 'Queue',
-          headerRight: () => <SignOutButton color={theme.colors.headerText} />,
+          headerRight: () => <SignOutButton color={T.headerText} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Tray size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+          ),
         }}
       />
       <Tabs.Screen
         name="students"
-        options={{ title: 'Students', headerShown: false }}
+        options={{
+          title: 'Students',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Users size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+          ),
+        }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
-          title: 'Notifications',
+          title: 'Alerts',
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarIcon: ({ color, focused }) => (
+            <Bell size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+          ),
         }}
       />
     </Tabs>

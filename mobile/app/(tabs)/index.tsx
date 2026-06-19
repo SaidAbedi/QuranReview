@@ -131,24 +131,7 @@ export default function AssignmentsScreen() {
   );
 
   const handleAction = (assignment: AssignmentSummary) => {
-    if (assignment.status === 'needs_resubmission') {
-      router.push({ pathname: '/assignments/[id]/record', params: { id: assignment.id } });
-      return;
-    }
-    const sub = subByAssignment.get(assignment.id);
-    if (!sub?.currentAttemptId) {
-      router.push(`/assignments/${assignment.id}` as '/');
-      return;
-    }
-    router.push({
-      pathname: '/assignments/[id]/feedback/[attemptId]',
-      params: {
-        id: assignment.id,
-        attemptId: sub.currentAttemptId,
-        submissionId: sub.id,
-        pageNumber: assignment.pageNumber?.toString() ?? '',
-      },
-    });
+    router.push(`/assignments/${assignment.id}` as '/');
   };
 
   if (loading) return <LoadingScreen message="Loading…" />;

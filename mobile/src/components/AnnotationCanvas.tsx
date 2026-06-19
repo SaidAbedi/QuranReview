@@ -359,7 +359,7 @@ export default function AnnotationCanvas({
         <Animated.View
           style={[
             styles.content,
-            { width, height },
+            { width, height, backgroundColor: imageUrl ? '#F8F4E8' : undefined },
             { transform: [{ scale: scaleAnim }, { translateX: txAnim }, { translateY: tyAnim }] },
           ]}
         >

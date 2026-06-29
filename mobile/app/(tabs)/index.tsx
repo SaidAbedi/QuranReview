@@ -152,9 +152,14 @@ export default function AssignmentsScreen() {
       }
     >
       {!hasAny && (
-        <Text style={[s.emptyText, { color: T.textMuted }]}>
-          No assignments yet. Your teacher will assign you pages soon.
-        </Text>
+        <View style={s.emptyState}>
+          <Text style={[s.emptyTitle, { color: T.textPrimary }]}>
+            بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ
+          </Text>
+          <Text style={[s.emptySubtitle, { color: T.textMuted }]}>
+            Your first assignment — Surah Al-Fatiha — will appear here once your teacher is ready.
+          </Text>
+        </View>
       )}
 
       {/* ── Needs attention ── */}
@@ -214,8 +219,11 @@ export default function AssignmentsScreen() {
 const s = StyleSheet.create({
   container:    { flex: 1 },
   content:      { padding: 16, gap: 4, paddingBottom: 32 },
-  emptyContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
-  emptyText:    { fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  emptyContent:   { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  emptyText:      { fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  emptyState:     { alignItems: 'center', gap: 16 },
+  emptyTitle:     { fontSize: 26, fontWeight: '600', textAlign: 'center', writingDirection: 'rtl' },
+  emptySubtitle:  { fontSize: 14, textAlign: 'center', lineHeight: 22, maxWidth: 280 },
 
   section:      { gap: 8, marginBottom: 8 },
   sectionLabel: {

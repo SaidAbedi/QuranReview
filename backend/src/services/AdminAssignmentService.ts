@@ -252,6 +252,9 @@ export class AdminAssignmentService {
       .update({ onboarding_status: 'active', updated_at: new Date().toISOString() })
       .eq('user_id', studentId);
 
+    // 4. Seed Surah Al-Fatiha (page 1) as the student's first assignment — idempotent
+    await this.seedFatihaAssignment(studentId, teacherId);
+
     // ── Notifications (fire-and-forget) ───────────────────────────────────────
     const { data: studentInfo } = await supabaseAdmin
       .from('users')
@@ -387,6 +390,51 @@ export class AdminAssignmentService {
         capacity: profile ? ((profile.teacher_capacity as number | null) ?? null) : null,
       };
     });
+  }
+
+  // Creates a Surah Al-Fatiha (page 1) assignment for a newly assigned student.
+  // Safe to call multiple times — skips creation if the student already has
+  // any assignment for page 1.
+  private async seedFatihaAssignment(studentId: string, teacherId: string): Promise<void> {
+    try {
+      // Resolve quran_page_id for page 1 (Madani Mushaf, mushaf_id=1)
+      const { data: mapping } = await supabaseAdmin
+        .from('quran_page_mappings')
+        .select('quran_page_id')
+        .eq('page_number', 1)
+        .eq('provider_mushaf_id', 1)
+        .maybeSingle();
+
+      if (!mapping) {
+        console.warn('[AdminAssignmentService] Fatiha seed skipped: page 1 mapping not found');
+        return;
+      }
+
+      const quranPageId = (mapping as Record<string, unknown>).quran_page_id as string;
+
+      // Idempotency guard — skip if student already has an assignment for page 1
+      const { data: existing } = await supabaseAdmin
+        .from('assignments')
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('quran_page_id', quranPageId)
+        .maybeSingle();
+
+      if (existing) return;
+
+      await supabaseAdmin.from('assignments').insert({
+        teacher_id: teacherId,
+        student_id: studentId,
+        quran_page_id: quranPageId,
+        title: 'Surah Al-Fatiha',
+        instructions: 'Begin with Surah Al-Fatiha. Recite clearly and at a comfortable pace.',
+        status: 'assigned',
+        assignment_type: 'teacher_assigned',
+      });
+    } catch (err) {
+      // Non-fatal — log and continue. The teacher can manually assign Fatiha if needed.
+      console.error('[AdminAssignmentService] Fatiha seed failed:', (err as Error).message);
+    }
   }
 
   // Returns all teacher-student relationships enriched with display names.

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
-import { Animated, Image, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
 import type { AnnotationPoint, AnnotationRow } from '@/types/api';
 
 export type AnnotationSaveStatus = 'saving' | 'saved' | 'failed';
@@ -15,24 +15,24 @@ export interface LocalAnnotation {
 }
 
 export const TOOL_COLORS: Record<string, string> = {
-  freehand: '#0E7490',
-  circle:   '#7C3AED',
+  freehand:  '#0E7490',
+  circle:    '#7C3AED',
   underline: '#D97706',
   highlight: '#059669',
 };
 
 const MISTAKE_DOT_COLORS: Record<string, string> = {
-  tajweed: '#7C3AED',
-  harakat: '#D97706',
-  wrong_word: '#DC2626',
-  wrong_ayah: '#DC2626',
-  makhraj: '#0369A1',
-  madd: '#059669',
-  ghunnah: '#059669',
-  waqf: '#6B7280',
+  tajweed:       '#7C3AED',
+  harakat:       '#D97706',
+  wrong_word:    '#DC2626',
+  wrong_ayah:    '#DC2626',
+  makhraj:       '#0369A1',
+  madd:          '#059669',
+  ghunnah:       '#059669',
+  waqf:          '#6B7280',
   pronunciation: '#D97706',
-  memorization: '#DC2626',
-  other: '#6B7280',
+  memorization:  '#DC2626',
+  other:         '#6B7280',
 };
 
 interface Props {
@@ -40,18 +40,16 @@ interface Props {
   height: number;
   savedAnnotations: AnnotationRow[];
   localAnnotations: LocalAnnotation[];
-  // drawEnabled=true  → drawing + pinch-zoom + tap-to-edit (scroll disabled by parent)
-  // drawEnabled=false → tap-to-edit only, scroll passes through to parent ScrollView
+  // drawEnabled=true  → drawing + tap-to-edit (scroll disabled by parent)
+  // drawEnabled=false → tap-to-edit only / word-tap mode / readOnly
   drawEnabled: boolean;
   strokeColor?: string;
   onStrokeComplete?: (points: AnnotationPoint[]) => void;
   onAnnotationTap?: (annotation: AnnotationRow) => void;
-  // onWordTap: when provided, activates word-tap mode — taps fire this with normalized coords
-  // instead of onAnnotationTap (used for tap-to-word annotation)
+  // When provided, taps fire this with normalized coords (word-tap mode)
   onWordTap?: (normX: number, normY: number) => void;
-  // readOnly=true → pinch/pan/tap for navigation (feedback viewer)
+  // readOnly=true → tap-to-view only (student feedback)
   readOnly?: boolean;
-  // imageUrl renders the page inside the zoom transform so pinch-zoom moves both image and annotations
   imageUrl?: string;
 }
 
@@ -63,18 +61,11 @@ function pointsToPath(points: AnnotationPoint[], w: number, h: number): string {
   return `${move} ${lines}`;
 }
 
-// Normalize content-space coordinates to [0, 1]. Used by the inner GestureDetector
-// (inside Animated.View) where e.x/e.y are already in content space.
 function toNormalized(x: number, y: number, w: number, h: number): AnnotationPoint {
   return {
     x: Math.min(1, Math.max(0, x / w)),
     y: Math.min(1, Math.max(0, y / h)),
   };
-}
-
-function clampOffset(val: number, s: number, dim: number): number {
-  const max = (dim / 2) * (s - 1);
-  return Math.min(max, Math.max(-max, val));
 }
 
 export default function AnnotationCanvas({
@@ -90,54 +81,23 @@ export default function AnnotationCanvas({
   readOnly = false,
   imageUrl,
 }: Props) {
-  // Zoom / pan — plain Animated.Values (no Reanimated plugin needed)
-  const scaleAnim  = useRef(new Animated.Value(1)).current;
-  const txAnim     = useRef(new Animated.Value(0)).current;
-  const tyAnim     = useRef(new Animated.Value(0)).current;
-
-  // JS-side mirrors for gesture math
-  const sRef  = useRef(1);
-  const txRef = useRef(0);
-  const tyRef = useRef(0);
-
-  // Saved at gesture start for delta computation
-  const baseS  = useRef(1);
-  const baseTx = useRef(0);
-  const baseTy = useRef(0);
-
   const [livePoints, setLivePoints] = useState<AnnotationPoint[]>([]);
   const strokeRef = useRef<AnnotationPoint[]>([]);
 
-  function setTransform(s: number, tx: number, ty: number) {
-    sRef.current = s;
-    txRef.current = tx;
-    tyRef.current = ty;
-    scaleAnim.setValue(s);
-    txAnim.setValue(tx);
-    tyAnim.setValue(ty);
-  }
-
-  // ── Tap gestures ──────────────────────────────────────────────────────────
-  // Inner tap: runs inside Animated.View — e.x/e.y are already in content space.
-  // Outer tap: runs on the container — e.x/e.y are container-space, need inverse transform.
-
   function findNearestAnnotation(cx: number, cy: number): AnnotationRow | null {
     let nearest: AnnotationRow | null = null;
-    let nearestDist = 24; // px threshold in content space
+    let nearestDist = 28;
     for (const ann of savedAnnotations) {
       if (!ann.points?.length) continue;
       const ax = ann.points[0].x * width;
       const ay = ann.points[0].y * height;
       const d = Math.hypot(ax - cx, ay - cy);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = ann;
-      }
+      if (d < nearestDist) { nearestDist = d; nearest = ann; }
     }
     return nearest;
   }
 
-  // Used inside Animated.View (annotate mode) — coords already in content space
+  // Inner tap — runs inside the draw View; e.x/e.y are already in content space
   const tapGestureInner = Gesture.Tap()
     .maxDeltaX(8)
     .maxDeltaY(8)
@@ -148,78 +108,20 @@ export default function AnnotationCanvas({
       if (ann) onAnnotationTap(ann);
     });
 
-  // Used on outer container (readOnly/browse) — invert transform to get content coords
+  // Outer tap — used in readOnly / word-tap mode; no zoom so e.x/e.y are direct
   const tapGestureOuter = Gesture.Tap()
     .maxDeltaX(8)
     .maxDeltaY(8)
     .runOnJS(true)
     .onEnd((e) => {
-      const s  = sRef.current;
-      const tx = txRef.current;
-      const ty = tyRef.current;
-      const cx = (e.x - tx - width / 2) / s + width / 2;
-      const cy = (e.y - ty - height / 2) / s + height / 2;
       if (onWordTap) {
-        onWordTap(cx / width, cy / height);
+        onWordTap(e.x / width, e.y / height);
         return;
       }
       if (!onAnnotationTap) return;
-      const ann = findNearestAnnotation(cx, cy);
+      const ann = findNearestAnnotation(e.x, e.y);
       if (ann) onAnnotationTap(ann);
     });
-
-  // ── Outer gestures: zoom + pan (applied to the Animated.View container) ────
-
-  const pinchGesture = Gesture.Pinch()
-    .runOnJS(true)
-    .onStart(() => {
-      baseS.current  = sRef.current;
-      baseTx.current = txRef.current;
-      baseTy.current = tyRef.current;
-    })
-    .onUpdate((e) => {
-      const newS = Math.min(4, Math.max(1, baseS.current * e.scale));
-      const rawTx = e.focalX - (e.focalX - width / 2 - baseTx.current) * (newS / baseS.current) - width / 2;
-      const rawTy = e.focalY - (e.focalY - height / 2 - baseTy.current) * (newS / baseS.current) - height / 2;
-      setTransform(newS, clampOffset(rawTx, newS, width), clampOffset(rawTy, newS, height));
-    })
-    .onEnd(() => {
-      baseS.current  = sRef.current;
-      baseTx.current = txRef.current;
-      baseTy.current = tyRef.current;
-    });
-
-  const panNavGesture = Gesture.Pan()
-    .minPointers(1)
-    .maxPointers(1)
-    .runOnJS(true)
-    .onStart(() => {
-      baseTx.current = txRef.current;
-      baseTy.current = tyRef.current;
-    })
-    .onUpdate((e) => {
-      const s = sRef.current;
-      setTransform(
-        s,
-        clampOffset(baseTx.current + e.translationX, s, width),
-        clampOffset(baseTy.current + e.translationY, s, height),
-      );
-    })
-    .onEnd(() => {
-      baseTx.current = txRef.current;
-      baseTy.current = tyRef.current;
-    });
-
-  // Outer gesture: pinch zoom + tap/pan for navigation (readOnly or browse mode)
-  const navGesture = Gesture.Simultaneous(
-    pinchGesture,
-    Gesture.Exclusive(tapGestureOuter, panNavGesture),
-  );
-
-  // Outer gesture in annotate mode: pinch zoom only (single-finger goes to inner)
-  const annotateOuterGesture = pinchGesture;
-
-  // ── Inner gestures: draw + tap (inside Animated.View — content-space coords) ─
 
   const drawGesture = Gesture.Pan()
     .minPointers(1)
@@ -227,7 +129,6 @@ export default function AnnotationCanvas({
     .minDistance(0)
     .runOnJS(true)
     .onBegin((e) => {
-      // e.x/e.y are in content space — normalize directly
       const pt = toNormalized(e.x, e.y, width, height);
       strokeRef.current = [pt];
       setLivePoints([pt]);
@@ -249,32 +150,67 @@ export default function AnnotationCanvas({
       setLivePoints([]);
     });
 
-  // Inner gesture in annotate mode: tap to select annotation, draw otherwise
   const innerAnnotateGesture = Gesture.Exclusive(tapGestureInner, drawGesture);
 
-  // Outer gesture for readOnly / browse: pinch + tap + pan
-  const outerGesture = (readOnly || !drawEnabled) ? navGesture : annotateOuterGesture;
+  // Annotate mode: outer gesture is disabled (inner handles tap + draw)
+  // ReadOnly / word-tap mode: outer tap handles interaction
+  const outerGesture = (readOnly || !drawEnabled)
+    ? tapGestureOuter
+    : Gesture.Tap().enabled(false);
+
+  // Ellipse size — approximates one Arabic word at Madani Mushaf proportions
+  const wordRx = width * 0.08;
+  const wordRy = height * 0.022;
 
   const svgContent = (
     <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-      {/* Saved annotation paths */}
-      {savedAnnotations.map((ann) =>
-        ann.points && ann.points.length >= 2 ? (
-          <Path
-            key={ann.id}
-            d={pointsToPath(ann.points, width, height)}
-            stroke={(ann.style?.strokeColor as string | undefined) ?? '#DC2626'}
-            strokeWidth={3}
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ) : null,
-      )}
 
-      {/* Tap targets */}
+      {/* ── Saved annotations ── */}
       {savedAnnotations.map((ann) => {
         if (!ann.points?.length) return null;
+
+        if (ann.annotationType === 'word_marker') {
+          const pt = ann.points[0];
+          const cx = pt.x * width;
+          const cy = pt.y * height;
+          const color = ann.mistakeType
+            ? (MISTAKE_DOT_COLORS[ann.mistakeType] ?? '#7C3AED')
+            : ((ann.style?.strokeColor as string | undefined) ?? '#7C3AED');
+          return (
+            <Ellipse
+              key={ann.id}
+              cx={cx}
+              cy={cy}
+              rx={wordRx}
+              ry={wordRy}
+              stroke={color}
+              strokeWidth={2.5}
+              fill={color}
+              fillOpacity={0.15}
+            />
+          );
+        }
+
+        if (ann.points.length >= 2) {
+          return (
+            <Path
+              key={ann.id}
+              d={pointsToPath(ann.points, width, height)}
+              stroke={(ann.style?.strokeColor as string | undefined) ?? '#DC2626'}
+              strokeWidth={3}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        }
+        return null;
+      })}
+
+      {/* ── Tap target dots — freehand only (word markers use the ellipse) ── */}
+      {savedAnnotations.map((ann) => {
+        if (!ann.points?.length) return null;
+        if (ann.annotationType === 'word_marker') return null;
         const pt = ann.points[0];
         const color = ann.mistakeType
           ? (MISTAKE_DOT_COLORS[ann.mistakeType] ?? '#DC2626')
@@ -293,30 +229,53 @@ export default function AnnotationCanvas({
         );
       })}
 
-      {/* Local optimistic annotations */}
-      {localAnnotations.map((local) =>
-        local.points.length >= 2 ? (
-          <Path
-            key={local.localId}
-            d={pointsToPath(local.points, width, height)}
-            stroke={
-              local.status === 'failed'
-                ? '#DC2626'
-                : local.status === 'saving'
-                ? '#9CA3AF'
-                : (local.strokeColor ?? '#DC2626')
-            }
-            strokeWidth={3}
-            strokeOpacity={local.status === 'saving' ? 0.5 : 1}
-            strokeDasharray={local.status === 'saving' ? '6 4' : undefined}
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ) : null,
-      )}
+      {/* ── Local optimistic annotations ── */}
+      {localAnnotations.map((local) => {
+        if (local.points.length === 1) {
+          // Optimistic word marker ellipse
+          const pt = local.points[0];
+          const color = local.strokeColor ?? '#7C3AED';
+          return (
+            <Ellipse
+              key={local.localId}
+              cx={pt.x * width}
+              cy={pt.y * height}
+              rx={wordRx}
+              ry={wordRy}
+              stroke={color}
+              strokeWidth={2.5}
+              strokeOpacity={local.status === 'saving' ? 0.5 : 1}
+              strokeDasharray={local.status === 'saving' ? '6 4' : undefined}
+              fill={color}
+              fillOpacity={local.status === 'saving' ? 0.06 : 0.15}
+            />
+          );
+        }
+        if (local.points.length >= 2) {
+          return (
+            <Path
+              key={local.localId}
+              d={pointsToPath(local.points, width, height)}
+              stroke={
+                local.status === 'failed'
+                  ? '#DC2626'
+                  : local.status === 'saving'
+                  ? '#9CA3AF'
+                  : (local.strokeColor ?? '#DC2626')
+              }
+              strokeWidth={3}
+              strokeOpacity={local.status === 'saving' ? 0.5 : 1}
+              strokeDasharray={local.status === 'saving' ? '6 4' : undefined}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        }
+        return null;
+      })}
 
-      {/* Live stroke */}
+      {/* ── Live stroke ── */}
       {livePoints.length >= 2 && (
         <Path
           d={pointsToPath(livePoints, width, height)}
@@ -331,10 +290,6 @@ export default function AnnotationCanvas({
     </Svg>
   );
 
-  // In annotate mode the inner GestureDetector (inside Animated.View) captures
-  // draw + tap in content-space coordinates — no inverse transform math needed.
-  // In readOnly/browse mode there's no inner gesture detector; tap + nav are
-  // handled by the single outer GestureDetector (navGesture).
   const innerContent = drawEnabled && !readOnly ? (
     <GestureDetector gesture={innerAnnotateGesture}>
       <View style={{ width, height }}>
@@ -356,15 +311,14 @@ export default function AnnotationCanvas({
   return (
     <GestureDetector gesture={outerGesture}>
       <View style={[styles.container, { width, height }]}>
-        <Animated.View
+        <View
           style={[
             styles.content,
             { width, height, backgroundColor: imageUrl ? '#F8F4E8' : undefined },
-            { transform: [{ scale: scaleAnim }, { translateX: txAnim }, { translateY: tyAnim }] },
           ]}
         >
           {innerContent}
-        </Animated.View>
+        </View>
       </View>
     </GestureDetector>
   );

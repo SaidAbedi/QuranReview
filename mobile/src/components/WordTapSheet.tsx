@@ -77,8 +77,10 @@ function pickBestWord(
     if (coords) { pageX = coords.pageX; pageY = coords.pageY; }
   }
 
-  // Estimate line (1–15)
-  const rawLine = Math.round((pageY - LINE_TOP) / LINE_HEIGHT + 0.5);
+  // Estimate line (1–15).
+  // Correct formula: nearest line center = round(offset / LINE_HEIGHT) + 1.
+  // The previous "+ 0.5 before round" caused a heavy bias toward lower-numbered lines.
+  const rawLine = Math.round((pageY - LINE_TOP) / LINE_HEIGHT) + 1;
   const estimatedLine = Math.min(15, Math.max(1, rawLine));
 
   // Words on exact line, falling back to adjacent lines

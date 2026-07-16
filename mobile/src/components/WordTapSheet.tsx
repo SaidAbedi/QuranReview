@@ -10,17 +10,9 @@ import {
 import { useTheme } from '@/hooks/useTheme';
 import type { PageWord, PageWordBounds } from '@/api/quran';
 
-// Madani Mushaf page geometry (in page-relative coordinates, 0–1).
-// Line N centre: Y = LINE_TOP + (N − 0.5) × LINE_HEIGHT
-const LINE_TOP    = 0.08;
-const LINE_HEIGHT = 0.056;
-
 /**
  * Convert a canvas-space tap (normX, normY) into page-image-space coordinates,
  * correcting for the letterbox produced by resizeMode="contain".
- *
- * Returns null if we cannot compute (missing dimensions or tap is outside the
- * rendered image area).
  */
 function canvasToPageCoords(
   normX: number,
@@ -31,32 +23,56 @@ function canvasToPageCoords(
   imageH: number,
 ): { pageX: number; pageY: number } | null {
   if (canvasW <= 0 || canvasH <= 0 || imageW <= 0 || imageH <= 0) return null;
-
   const scale    = Math.min(canvasW / imageW, canvasH / imageH);
   const rendered = { w: imageW * scale, h: imageH * scale };
-  const pad      = {
-    x: (canvasW - rendered.w) / 2,
-    y: (canvasH - rendered.h) / 2,
-  };
-
-  const tapPx = { x: normX * canvasW, y: normY * canvasH };
-
-  // Clamp to image bounds — taps in the letterbox area are edge-case snapped
-  const pageX = Math.min(1, Math.max(0, (tapPx.x - pad.x) / rendered.w));
-  const pageY = Math.min(1, Math.max(0, (tapPx.y - pad.y) / rendered.h));
-
+  const pad      = { x: (canvasW - rendered.w) / 2, y: (canvasH - rendered.h) / 2 };
+  const tapPx    = { x: normX * canvasW, y: normY * canvasH };
+  const pageX    = Math.min(1, Math.max(0, (tapPx.x - pad.x) / rendered.w));
+  const pageY    = Math.min(1, Math.max(0, (tapPx.y - pad.y) / rendered.h));
   return { pageX, pageY };
 }
 
 /**
- * Pick the single best word for a given tap.
- *
- * Steps:
- *  1. Convert canvas tap → page coords (letterbox-corrected).
- *  2. Estimate line number from pageY.
- *  3. Filter words to that line (fall back to ±1 if empty).
- *  4. Estimate positionInLine from pageX (RTL: right edge → pos 1).
- *  5. Return the word with the nearest positionInLine.
+ * Pick the best word using exact glyph bounding boxes (bounds.x0/y0/x1/y1).
+ * Strategy:
+ *   1. Find all words whose bbox contains the tap (with a small padding).
+ *   2. If exactly one hit → return it.
+ *   3. If multiple hits → return the one whose center is nearest.
+ *   4. If no hit → return the word with the nearest center distance overall.
+ */
+function pickBestWordByBounds(
+  pageX: number,
+  pageY: number,
+  bounded: PageWord[],
+): PageWord | null {
+  if (!bounded.length) return null;
+
+  const PAD = 0.008;
+  const hits = bounded.filter((w) => {
+    const { x0, y0, x1, y1 } = w.bounds!;
+    return pageX >= x0 - PAD && pageX <= x1 + PAD &&
+           pageY >= y0 - PAD && pageY <= y1 + PAD;
+  });
+
+  const pool = hits.length > 0 ? hits : bounded;
+  let best = pool[0];
+  let bestDist = Infinity;
+  for (const w of pool) {
+    const cx = (w.bounds!.x0 + w.bounds!.x1) / 2;
+    const cy = (w.bounds!.y0 + w.bounds!.y1) / 2;
+    const d = Math.hypot(cx - pageX, cy - pageY);
+    if (d < bestDist) { bestDist = d; best = w; }
+  }
+  return best;
+}
+
+// Fallback constants for pages without glyph bounds
+const LINE_TOP    = 0.08;
+const LINE_HEIGHT = 0.056;
+
+/**
+ * Pick the best word for a tap. Uses exact glyph bounds when available,
+ * falling back to line/position estimation for pages without bounds data.
  */
 function pickBestWord(
   normX: number,
@@ -77,25 +93,20 @@ function pickBestWord(
     if (coords) { pageX = coords.pageX; pageY = coords.pageY; }
   }
 
-  // Estimate line (1–15).
-  // Correct formula: nearest line center = round(offset / LINE_HEIGHT) + 1.
-  // The previous "+ 0.5 before round" caused a heavy bias toward lower-numbered lines.
+  // Use exact bounding boxes when available
+  const bounded = words.filter((w) => w.bounds);
+  if (bounded.length > 0) return pickBestWordByBounds(pageX, pageY, bounded);
+
+  // Fallback: linear line/position estimation
   const rawLine = Math.round((pageY - LINE_TOP) / LINE_HEIGHT) + 1;
   const estimatedLine = Math.min(15, Math.max(1, rawLine));
-
-  // Words on exact line, falling back to adjacent lines
   let lineWords = words.filter((w) => w.lineNumber === estimatedLine);
-  if (lineWords.length === 0) {
-    lineWords = words.filter((w) => Math.abs(w.lineNumber - estimatedLine) <= 1);
-  }
+  if (lineWords.length === 0) lineWords = words.filter((w) => Math.abs(w.lineNumber - estimatedLine) <= 1);
   if (lineWords.length === 0) return null;
 
-  // Map pageX → positionInLine (RTL: pageX=1 → pos=1, pageX=0 → pos=N)
   const N = lineWords.length;
   const approxPos = Math.round((1 - pageX) * N + 0.5);
   const clampedPos = Math.min(N, Math.max(1, approxPos));
-
-  // Pick nearest by positionInLine
   let best = lineWords[0];
   let bestDist = Infinity;
   for (const w of lineWords) {

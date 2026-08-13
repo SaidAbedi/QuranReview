@@ -9,6 +9,7 @@ import { mediaRouter } from './routes/media';
 import { progressRouter } from './routes/progress';
 import { notificationsRouter } from './routes/notifications';
 import { adminRouter } from './routes/admin';
+import { testUsersRouter } from './routes/test-users';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api', mediaRouter);
 app.use('/api', progressRouter);
 app.use('/api', notificationsRouter);
 app.use('/api', adminRouter);
+app.use('/api', testUsersRouter);
 
 // ---- Auth callback (Supabase email confirmation redirect) ---------------
 // Supabase redirects here after the user clicks the confirmation link.

@@ -351,7 +351,8 @@ export default function RecordScreen() {
                 <Text style={styles.reviewBtnText}>{player.playing ? 'Pause' : 'Play back'}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} activeOpacity={0.75}>
+                <Text style={styles.submitBtnIcon}>✓</Text>
                 <Text style={styles.submitBtnText}>Submit to Teacher</Text>
               </TouchableOpacity>
 
@@ -484,11 +485,20 @@ const styles = StyleSheet.create({
   reviewBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
 
   submitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
     paddingVertical: 16,
     borderRadius: 14,
-    backgroundColor: '#1B4F72',
-    alignItems: 'center',
+    backgroundColor: RING_COLOR,
+    shadowColor: RING_COLOR,
+    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 8,
   },
+  submitBtnIcon: { fontSize: 18, color: '#fff', fontWeight: '700' },
   submitBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 
   redoBtn: { alignItems: 'center', paddingVertical: 8 },

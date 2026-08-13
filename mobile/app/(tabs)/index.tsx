@@ -154,11 +154,19 @@ export default function AssignmentsScreen() {
       {!hasAny && (
         <View style={s.emptyState}>
           <Text style={[s.emptyTitle, { color: T.textPrimary }]}>
-            بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ
+            Welcome!
           </Text>
           <Text style={[s.emptySubtitle, { color: T.textMuted }]}>
-            Your first assignment — Surah Al-Fatiha — will appear here once your teacher is ready.
+            Let's start our first lesson to get you started. Your teacher will assign your first page soon.
           </Text>
+          <View style={s.bismillahContainer}>
+            <Text style={[s.bismillahArabic, { color: T.brandPrimary }]}>
+              بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ
+            </Text>
+            <Text style={[s.bismillahEnglish, { color: T.textMuted }]}>
+              In the name of Allah, the Most Gracious, the Most Merciful
+            </Text>
+          </View>
         </View>
       )}
 
@@ -278,4 +286,8 @@ const s = StyleSheet.create({
 
   badge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   badgeText: { fontSize: 11, fontWeight: '600' },
+
+  bismillahContainer: { gap: 6, marginTop: 16, alignItems: 'center' },
+  bismillahArabic:    { fontSize: 18, fontWeight: '600', textAlign: 'center', writingDirection: 'rtl' },
+  bismillahEnglish:   { fontSize: 12, textAlign: 'center', lineHeight: 18 },
 });

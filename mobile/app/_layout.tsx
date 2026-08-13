@@ -5,12 +5,16 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { fetchMe } from "@/api/me";
+import { useSessionPersistence } from "@/hooks/useSessionPersistence";
 
 export default function RootLayout() {
   const { session, user, isLoading, setSession, setUser, setLoading } =
     useAuthStore();
   const router = useRouter();
   const segments = useSegments();
+
+  // Enable persistent session: restores from secure storage on app start
+  useSessionPersistence();
 
   useEffect(() => {
     // Subscribe to auth state changes

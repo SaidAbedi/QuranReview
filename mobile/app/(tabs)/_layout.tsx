@@ -2,14 +2,22 @@ import { Alert, Text, TouchableOpacity } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Bell, BookOpen, ChartLineUp, ClockCounterClockwise, Scroll } from 'phosphor-react-native';
 import { supabase } from '@/lib/supabase';
+import { secureStorage } from '@/lib/secureStorage';
 import { useUnreadCount } from '@/hooks/useUnreadCount';
 import { useTheme } from '@/hooks/useTheme';
 
 function SignOutButton({ color }: { color: string }) {
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: () => supabase.auth.signOut() },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await secureStorage.clearRefreshToken();
+          await supabase.auth.signOut();
+        },
+      },
     ]);
   };
   return (

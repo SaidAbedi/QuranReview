@@ -16,6 +16,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getQuranPage } from '@/api/quran';
 import { createSelfPacedSubmission, getStudentSubmissions } from '@/api/submissions';
+import { pushRecentPage } from '@/lib/recentPages';
 import { useTheme } from '@/hooks/useTheme';
 import { ApiError } from '@/api/client';
 import type { QuranPageSummary, SubmissionRow } from '@/types/api';
@@ -36,6 +37,11 @@ export default function QuranPageScreen() {
   const [submitting, setSubmitting]     = useState(false);
   const [pageSubmissions, setPageSubmissions] = useState<SubmissionRow[]>([]);
   const [footerH, setFooterH]           = useState(90); // real height from onLayout
+
+  // Record this page as recently read for the browser's Recently Read strip.
+  useEffect(() => {
+    if (!Number.isNaN(pageNumber)) pushRecentPage(pageNumber);
+  }, [pageNumber]);
 
   // Auto-hide animation
   const footerTranslate = useRef(new Animated.Value(0)).current;

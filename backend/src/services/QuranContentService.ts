@@ -7,6 +7,16 @@ import { env } from '../config/env';
 import { supabaseAdmin } from '../db/client';
 import { AppError } from '../types';
 
+// Opaque full-page mushaf image (cream background, black text) from quran.com's
+// CDN. The width_1260 Hafs/Madani images are 1260×2038 (see QURAN_PAGE_* below).
+// Page number is zero-padded to 3 digits, e.g. 603 → page603.png, 7 → page007.png.
+const QURAN_PAGE_IMG_W = 1260;
+const QURAN_PAGE_IMG_H = 2038;
+function quranComPageImageUrl(pageNumber: number): string {
+  const padded = String(pageNumber).padStart(3, '0');
+  return `https://files.quran.app/hafs/madani/width_1260/page${padded}.png`;
+}
+
 // ---- App-facing response types (exported for route handlers) ---------------
 
 export interface QuranPageSummary {
@@ -477,17 +487,23 @@ export class QuranContentService {
   // ---- Private helpers ----------------------------------------------------
 
   private toPageSummary(row: Record<string, unknown>): QuranPageSummary {
+    const pageNumber = row.page_number as number;
     const storagePath = row.storage_path as string | null;
+    // Prefer a self-hosted image if we have one; otherwise serve the opaque
+    // full-page mushaf image from quran.com's CDN. We deliberately ignore the
+    // per-verse `image_url` (a transparent QCF glyph PNG) here — it renders as
+    // invisible black-on-dark in the reader. The quran.com width_1260 images
+    // are cream-background, fully opaque, and 1260×2038 (hence the fixed dims).
     const imageUrl = storagePath
       ? `${env.SUPABASE_URL}/storage/v1/object/public/quran-page-images/${storagePath}`
-      : ((row.image_url as string | null) ?? null);
+      : quranComPageImageUrl(pageNumber);
     return {
       id: row.id as string,
-      pageNumber: row.page_number as number,
+      pageNumber,
       mushafId: row.mushaf_id as string,
       imageUrl,
-      width: (row.width as number | null) ?? null,
-      height: (row.height as number | null) ?? null,
+      width: storagePath ? ((row.width as number | null) ?? null) : QURAN_PAGE_IMG_W,
+      height: storagePath ? ((row.height as number | null) ?? null) : QURAN_PAGE_IMG_H,
       surahNameEnglish: (row.primary_surah_name_english as string | null) ?? null,
     };
   }

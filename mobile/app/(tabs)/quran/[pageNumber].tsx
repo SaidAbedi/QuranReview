@@ -183,7 +183,7 @@ export default function QuranPageScreen() {
         ) : page?.imageUrl ? (
           <Image
             source={{ uri: page.imageUrl }}
-            style={{ width: imgW, height: imgH }}
+            style={{ width: imgW, height: imgH, backgroundColor: '#FCF9F0' }}
             resizeMode="contain"
           />
         ) : (

@@ -144,7 +144,11 @@ function SurahRow({ surah, status, percent, onPress }: {
   const statusColor = meta ? T[meta.colorKey] : undefined;
 
   return (
-    <TouchableOpacity style={[row.wrap, { backgroundColor: T.surface }]} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[row.wrap, { backgroundColor: T.surface, borderBottomColor: T.divider }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       {/* status accent bar */}
       <View style={[row.accent, { backgroundColor: statusColor ?? 'transparent' }]} />
 
@@ -156,7 +160,7 @@ function SurahRow({ surah, status, percent, onPress }: {
         <Text style={[row.english, { color: T.textPrimary }]} numberOfLines={1}>{surah.english}</Text>
         <Text style={[row.sub, { color: T.textMuted }]}>Juz {juzForPage(surah.startPage)} · {surah.ayahs} ayahs</Text>
         {meta && (
-          <View style={row.statusLine}>
+          <View style={[row.statusPill, { backgroundColor: (statusColor ?? T.textMuted) + '22' }]}>
             <View style={[row.dot, { backgroundColor: statusColor }]} />
             <Text style={[row.statusText, { color: statusColor }]}>{meta.label}</Text>
           </View>
@@ -168,7 +172,7 @@ function SurahRow({ surah, status, percent, onPress }: {
 
       {/* progress underline */}
       {percent > 0 && (
-        <View style={[row.progressTrack, { backgroundColor: 'transparent' }]}>
+        <View style={row.progressTrack}>
           <View style={[row.progressFill, { width: `${percent}%`, backgroundColor: T.success }]} />
         </View>
       )}
@@ -194,7 +198,11 @@ function JuzRow({ juz, percent, onPress }: { juz: number; percent: number; onPre
   const { colors: T } = useTheme();
   const [start, end] = juzPageRange(juz);
   return (
-    <TouchableOpacity style={[row.wrap, { backgroundColor: T.surface }]} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[row.wrap, { backgroundColor: T.surface, borderBottomColor: T.divider }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       <Text style={[row.number, { color: T.brandPrimary }]}>{juz}</Text>
       <View style={row.mid}>
         <Text style={[row.english, { color: T.textPrimary }]}>Juz {juz}</Text>
@@ -339,7 +347,6 @@ export default function QuranBrowserScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.list}
           ListHeaderComponent={header}
-          ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: T.divider }]} />}
           renderItem={({ item }) => (
             <JuzRow juz={item.juz} percent={item.percent} onPress={() => goToPage(juzPageRange(item.juz)[0])} />
           )}
@@ -387,7 +394,6 @@ const styles = StyleSheet.create({
   tabsWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
   jump: { marginHorizontal: 16, marginTop: 8, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10 },
   jumpText: { fontSize: 14, fontWeight: '700' },
-  sep: { height: StyleSheet.hairlineWidth, marginLeft: 56 },
   empty: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 14 },
 });
@@ -417,23 +423,30 @@ const tb = StyleSheet.create({
 });
 
 const jh = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
-  text: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8 },
+  text: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   line: { flex: 1, height: StyleSheet.hairlineWidth },
 });
 
 const row = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, gap: 12, overflow: 'hidden' },
+  wrap: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 14, paddingHorizontal: 16, gap: 14,
+    overflow: 'hidden', borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   accent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
-  number: { width: 28, fontSize: 15, fontWeight: '700', textAlign: 'center' },
-  mid: { flex: 1, gap: 2 },
+  number: { width: 30, fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  mid: { flex: 1, gap: 3 },
   english: { fontSize: 16, fontWeight: '600' },
-  sub: { fontSize: 12 },
-  statusLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 11, fontWeight: '600' },
-  arabic: { fontSize: 20, fontWeight: '600', writingDirection: 'rtl', maxWidth: 130, textAlign: 'right' },
+  sub: { fontSize: 12.5 },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 11, fontWeight: '700' },
+  arabic: { fontSize: 22, fontWeight: '600', writingDirection: 'rtl', maxWidth: 140, textAlign: 'right' },
   chevron: { fontSize: 22, fontWeight: '300' },
-  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2.5 },
-  progressFill: { position: 'absolute', left: 0, height: 2.5 },
+  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 3 },
+  progressFill: { position: 'absolute', left: 0, height: 3 },
 });

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
+  FlatList,
   Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -14,36 +15,88 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { getQuranPage } from '@/api/quran';
+import { getQuranPage, quranPageImageUrl, TOTAL_QURAN_PAGES } from '@/api/quran';
 import { createSelfPacedSubmission, getStudentSubmissions } from '@/api/submissions';
 import { pushRecentPage } from '@/lib/recentPages';
 import { useTheme } from '@/hooks/useTheme';
 import { ApiError } from '@/api/client';
-import type { QuranPageSummary, SubmissionRow } from '@/types/api';
+import type { SubmissionRow } from '@/types/api';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
+// All mushaf pages are 1260×2038; use that constant ratio for every page so
+// the pager can lay out instantly without waiting on per-page metadata.
+const PAGE_RATIO = 2038 / 1260;
+const IMG_H = Math.round(SCREEN_W * PAGE_RATIO);
+const PAGE_BG = '#FCF9F0';
+
 const SCROLL_THRESHOLD = 8; // px delta before we react
+
+// ── A single swipeable page: the tall page image in a vertical scroller ──────
+
+const PagePane = memo(function PagePane({
+  pageNumber,
+  footerH,
+  onVScroll,
+}: {
+  pageNumber: number;
+  footerH: number;
+  onVScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+}) {
+  return (
+    <ScrollView
+      style={{ width: SCREEN_W }}
+      contentContainerStyle={{ flexGrow: 1, paddingBottom: footerH }}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+      scrollEventThrottle={16}
+      onScroll={onVScroll}
+    >
+      <Image
+        source={{ uri: quranPageImageUrl(pageNumber) }}
+        style={{ width: SCREEN_W, height: IMG_H, backgroundColor: PAGE_BG }}
+        resizeMode="contain"
+      />
+    </ScrollView>
+  );
+});
 
 export default function QuranPageScreen() {
   const { pageNumber: pageParam } = useLocalSearchParams<{ pageNumber: string }>();
-  const pageNumber = parseInt(pageParam ?? '1', 10);
+  const initialPage = Math.min(Math.max(parseInt(pageParam ?? '1', 10) || 1, 1), TOTAL_QURAN_PAGES);
   const router = useRouter();
   const theme = useTheme('dark');
   const T = theme.colors;
 
-  const [page, setPage]               = useState<QuranPageSummary | null>(null);
-  const [loadingPage, setLoadingPage]   = useState(true);
-  const [submitting, setSubmitting]     = useState(false);
-  const [pageSubmissions, setPageSubmissions] = useState<SubmissionRow[]>([]);
-  const [footerH, setFooterH]           = useState(90); // real height from onLayout
+  const [currentPage, setCurrentPage] = useState(initialPage);
+  const [submitting, setSubmitting]   = useState(false);
+  const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
+  const [currentPageId, setCurrentPageId] = useState<string | null>(null);
+  const [footerH, setFooterH]         = useState(90); // real height from onLayout
 
-  // Record this page as recently read for the browser's Recently Read strip.
+  const pages = useMemo(
+    () => Array.from({ length: TOTAL_QURAN_PAGES }, (_, i) => i + 1),
+    [],
+  );
+
+  // Record the visible page for the browser's Recently Read strip.
+  useEffect(() => { pushRecentPage(currentPage); }, [currentPage]);
+
+  // Load this student's submissions once; re-filtered per page below.
   useEffect(() => {
-    if (!Number.isNaN(pageNumber)) pushRecentPage(pageNumber);
-  }, [pageNumber]);
+    getStudentSubmissions().then(setSubmissions).catch(() => {});
+  }, []);
 
-  // Auto-hide animation
+  // Resolve the current page's DB id so we can match its submissions.
+  useEffect(() => {
+    let cancelled = false;
+    getQuranPage(currentPage)
+      .then((p) => { if (!cancelled) setCurrentPageId(p.id); })
+      .catch(() => { if (!cancelled) setCurrentPageId(null); });
+    return () => { cancelled = true; };
+  }, [currentPage]);
+
+  // ── Auto-hide footer on vertical scroll ──
   const footerTranslate = useRef(new Animated.Value(0)).current;
   const lastScrollY     = useRef(0);
   const footerShown     = useRef(true);
@@ -51,62 +104,46 @@ export default function QuranPageScreen() {
   const showFooter = useCallback(() => {
     if (footerShown.current) return;
     footerShown.current = true;
-    Animated.spring(footerTranslate, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 0,
-      speed: 18,
-    }).start();
+    Animated.spring(footerTranslate, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 18 }).start();
   }, [footerTranslate]);
 
   const hideFooter = useCallback((height: number) => {
     if (!footerShown.current) return;
     footerShown.current = false;
-    Animated.spring(footerTranslate, {
-      toValue: height,
-      useNativeDriver: true,
-      bounciness: 0,
-      speed: 18,
-    }).start();
+    Animated.spring(footerTranslate, { toValue: height, useNativeDriver: true, bounciness: 0, speed: 18 }).start();
   }, [footerTranslate]);
 
-  const handleScroll = useCallback(
+  const handleVScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y     = e.nativeEvent.contentOffset.y;
+      const y = e.nativeEvent.contentOffset.y;
       const delta = y - lastScrollY.current;
       lastScrollY.current = y;
-
-      if (delta > SCROLL_THRESHOLD) {
-        hideFooter(footerH);
-      } else if (delta < -SCROLL_THRESHOLD) {
-        showFooter();
-      }
+      if (delta > SCROLL_THRESHOLD) hideFooter(footerH);
+      else if (delta < -SCROLL_THRESHOLD) showFooter();
     },
     [hideFooter, showFooter, footerH],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingPage(true);
-    getQuranPage(pageNumber)
-      .then((p) => { if (!cancelled) { setPage(p); setLoadingPage(false); } })
-      .catch(() => { if (!cancelled) setLoadingPage(false); });
-    return () => { cancelled = true; };
-  }, [pageNumber]);
+  // ── Page turn: settle onto the nearest page ──
+  const handlePageSettle = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+      const next = Math.min(Math.max(idx + 1, 1), TOTAL_QURAN_PAGES);
+      if (next !== currentPage) {
+        setCurrentPage(next);
+        lastScrollY.current = 0;
+        showFooter();
+      }
+    },
+    [currentPage, showFooter],
+  );
 
-  useEffect(() => {
-    if (!page?.id) return;
-    const pageId = page.id;
-    getStudentSubmissions()
-      .then((subs) => {
-        setPageSubmissions(subs.filter((s) => s.quranPageId === pageId));
-      })
-      .catch(() => {});
-  }, [page?.id]);
-
+  // ── Submissions / feedback for the current page ──
   const reviewedSubmission = useMemo<SubmissionRow | null>(() => {
-    const withFeedback = pageSubmissions.filter(
+    if (!currentPageId) return null;
+    const withFeedback = submissions.filter(
       (s) =>
+        s.quranPageId === currentPageId &&
         ['reviewed', 'completed', 'needs_resubmission'].includes(s.status) &&
         s.currentAttemptId,
     );
@@ -116,36 +153,26 @@ export default function QuranPageScreen() {
       const tb = b.reviewedAt ?? b.updatedAt;
       return new Date(tb).getTime() - new Date(ta).getTime();
     })[0];
-  }, [pageSubmissions]);
+  }, [submissions, currentPageId]);
 
   const hasFeedback = !!reviewedSubmission;
 
   const handleRecite = useCallback(async () => {
     setSubmitting(true);
     try {
-      const result = await createSelfPacedSubmission(pageNumber);
-      router.push({
-        pathname: '/assignments/[id]/record',
-        params: { id: result.assignmentId },
-      });
+      const result = await createSelfPacedSubmission(currentPage);
+      router.push({ pathname: '/assignments/[id]/record', params: { id: result.assignmentId } });
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.message
-          : 'Something went wrong. Please try again.';
+      const msg = err instanceof ApiError ? err.message : 'Something went wrong. Please try again.';
       Alert.alert('Cannot Recite', msg);
     } finally {
       setSubmitting(false);
     }
-  }, [pageNumber, router]);
+  }, [currentPage, router]);
 
   const handleFeedback = useCallback(() => {
     if (!reviewedSubmission) {
-      Alert.alert(
-        'No Feedback Yet',
-        'Submit your recitation and your teacher will annotate it.',
-        [{ text: 'OK' }],
-      );
+      Alert.alert('No Feedback Yet', 'Submit your recitation and your teacher will annotate it.', [{ text: 'OK' }]);
       return;
     }
     router.push({
@@ -154,53 +181,38 @@ export default function QuranPageScreen() {
         id: reviewedSubmission.assignmentId,
         attemptId: reviewedSubmission.currentAttemptId!,
         submissionId: reviewedSubmission.id,
-        pageNumber: pageNumber.toString(),
+        pageNumber: currentPage.toString(),
       },
     });
-  }, [reviewedSubmission, router]);
-
-  const imgW = SCREEN_W;
-  const imgH = page?.width && page?.height
-    ? Math.round(SCREEN_W * (page.height / page.width))
-    : Math.round(SCREEN_W * (2103 / 1300));
+  }, [reviewedSubmission, router, currentPage]);
 
   return (
     <View style={[styles.container, { backgroundColor: T.background }]}>
-      <Stack.Screen options={{ title: `Page ${pageNumber}` }} />
+      <Stack.Screen options={{ title: `Page ${currentPage}` }} />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: footerH }]}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        scrollEventThrottle={16}
-        onScroll={handleScroll}
-      >
-        {loadingPage ? (
-          <View style={[styles.imagePlaceholder, { height: imgH, backgroundColor: T.backgroundAlt }]}>
-            <ActivityIndicator size="large" color={T.brandPrimary} />
-          </View>
-        ) : page?.imageUrl ? (
-          <Image
-            source={{ uri: page.imageUrl }}
-            style={{ width: imgW, height: imgH, backgroundColor: '#FCF9F0' }}
-            resizeMode="contain"
-          />
-        ) : (
-          <View style={[styles.imagePlaceholder, { height: imgH, backgroundColor: T.backgroundAlt }]}>
-            <Text style={[styles.placeholderText, { color: T.textMuted }]}>Page image unavailable</Text>
-          </View>
+      <FlatList
+        data={pages}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        initialScrollIndex={initialPage - 1}
+        getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
+        keyExtractor={(p) => String(p)}
+        onMomentumScrollEnd={handlePageSettle}
+        // Keep only a few pages mounted for smooth, memory-safe paging.
+        windowSize={3}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        removeClippedSubviews
+        renderItem={({ item }) => (
+          <PagePane pageNumber={item} footerH={footerH} onVScroll={handleVScroll} />
         )}
-      </ScrollView>
+      />
 
       <Animated.View
         style={[
           styles.footer,
-          {
-            transform: [{ translateY: footerTranslate }],
-            backgroundColor: T.surface,
-            borderTopColor: T.border,
-          },
+          { transform: [{ translateY: footerTranslate }], backgroundColor: T.surface, borderTopColor: T.border },
         ]}
         onLayout={(e) => setFooterH(e.nativeEvent.layout.height)}
       >
@@ -242,16 +254,6 @@ export default function QuranPageScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
-  scroll:        { flex: 1 },
-  scrollContent: { flexGrow: 1 },
-
-  imagePlaceholder: {
-    width: SCREEN_W,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholderText: { fontSize: 14 },
 
   footer: {
     position: 'absolute',

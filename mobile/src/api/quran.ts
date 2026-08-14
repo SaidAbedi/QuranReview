@@ -1,6 +1,16 @@
 import { api, normalizeUrl } from './client';
 import type { QuranPageSummary } from '@/types/api';
 
+// Total pages in the Madani (QCF V2) mushaf.
+export const TOTAL_QURAN_PAGES = 604;
+
+// Opaque full-page mushaf image URL. This mirrors the URL the backend returns
+// from GET /api/quran/pages/:n — it is a public quran.com CDN asset (not a
+// secret), so building it client-side lets the reader page across all 604
+// pages smoothly without an API round-trip per swipe.
+export const quranPageImageUrl = (pageNumber: number): string =>
+  `https://files.quran.app/hafs/madani/width_1260/page${String(pageNumber).padStart(3, '0')}.png`;
+
 export const getQuranPage = async (pageNumber: number): Promise<QuranPageSummary> => {
   const data = await api.get<QuranPageSummary>(`/quran/pages/${pageNumber}`);
   return {

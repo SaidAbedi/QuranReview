@@ -14,44 +14,47 @@ import { useTheme } from '@/hooks/useTheme';
 import { getStudentAssignments } from '@/api/assignments';
 import { getStudentProgress } from '@/api/progress';
 import type { AssignmentSummary, StudentProgressSummary } from '@/types/api';
-import { SURAHS, surahForPage, juzForPage, type SurahMeta } from '@/constants/surahs';
+import {
+  SURAHS,
+  surahForPage,
+  juzForPage,
+  juzPageRange,
+  JUZ_START_PAGES,
+  type SurahMeta,
+} from '@/constants/surahs';
 import { getRecentPages } from '@/lib/recentPages';
 
 // ── Per-surah status derived from a student's assignments ─────────────────────
-// "Needs attention" statuses sort to the top and show a coloured circle badge.
 
-type StatusKey = 'needs_resubmission' | 'reviewed' | 'submitted' | 'completed';
+type StatusKey = 'needs_resubmission' | 'reviewed' | 'submitted' | 'pending' | 'completed';
+type ColorKey = 'error' | 'info' | 'warning' | 'brandPrimary' | 'success';
 
-const STATUS_META: Record<StatusKey, { priority: number; colorKey: 'error' | 'info' | 'warning' | 'success'; label: string; attention: boolean }> = {
-  needs_resubmission: { priority: 4, colorKey: 'error',   label: 'Needs Practice',  attention: true  },
-  reviewed:           { priority: 3, colorKey: 'info',    label: 'Feedback Ready',  attention: true  },
-  submitted:          { priority: 2, colorKey: 'warning', label: 'Under Review',    attention: false },
-  completed:          { priority: 1, colorKey: 'success', label: 'Completed',       attention: false },
+const STATUS_META: Record<StatusKey, { priority: number; colorKey: ColorKey; label: string }> = {
+  needs_resubmission: { priority: 5, colorKey: 'error',        label: 'Needs Attention' },
+  reviewed:           { priority: 4, colorKey: 'info',         label: 'Feedback Ready'  },
+  submitted:          { priority: 3, colorKey: 'warning',      label: 'Under Review'    },
+  pending:            { priority: 2, colorKey: 'brandPrimary', label: 'Pending'         },
+  completed:          { priority: 1, colorKey: 'success',      label: 'Completed'       },
 };
 
-// Map a raw assignment/submission status onto our compact StatusKey.
 function normalizeStatus(raw: string): StatusKey | null {
   if (raw === 'needs_resubmission') return 'needs_resubmission';
   if (raw === 'reviewed') return 'reviewed';
   if (raw === 'submitted' || raw === 'in_review') return 'submitted';
   if (raw === 'completed') return 'completed';
+  if (raw === 'assigned' || raw === 'draft') return 'pending';
   return null;
 }
 
-interface SurahRowData extends SurahMeta {
-  status: StatusKey | null;
-  percent: number; // 0–100 completion
-}
+// ── Chapters-tab list model: juz headers interleaved with surah rows ──────────
+
+type ListItem =
+  | { type: 'juzHeader'; juz: number; key: string }
+  | { type: 'surah'; surah: SurahMeta; status: StatusKey | null; percent: number; key: string };
 
 // ── Search bar ────────────────────────────────────────────────────────────────
 
-function SearchBar({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { colors: T } = useTheme();
   return (
     <View style={[sb.wrap, { backgroundColor: T.surfaceSunken, borderColor: T.border }]}>
@@ -75,18 +78,11 @@ function SearchBar({
   );
 }
 
-// ── Recently read strip ───────────────────────────────────────────────────────
+// ── Recently read ─────────────────────────────────────────────────────────────
 
-function RecentlyRead({
-  pages,
-  onPress,
-}: {
-  pages: number[];
-  onPress: (page: number) => void;
-}) {
+function RecentlyRead({ pages, onPress }: { pages: number[]; onPress: (page: number) => void }) {
   const { colors: T } = useTheme();
   if (pages.length === 0) return null;
-
   return (
     <View style={rr.wrap}>
       <Text style={[rr.heading, { color: T.textMuted }]}>RECENTLY READ</Text>
@@ -101,9 +97,7 @@ function RecentlyRead({
               activeOpacity={0.75}
             >
               <Text style={[rr.cardPage, { color: T.brandPrimary }]}>Page {page}</Text>
-              <Text style={[rr.cardSurah, { color: T.textPrimary }]} numberOfLines={1}>
-                {surah.english}
-              </Text>
+              <Text style={[rr.cardSurah, { color: T.textPrimary }]} numberOfLines={1}>{surah.english}</Text>
               <Text style={[rr.cardJuz, { color: T.textMuted }]}>Juz {juzForPage(page)}</Text>
             </TouchableOpacity>
           );
@@ -113,48 +107,105 @@ function RecentlyRead({
   );
 }
 
-// ── Surah row ─────────────────────────────────────────────────────────────────
+// ── Segmented tabs ────────────────────────────────────────────────────────────
 
-function SurahRow({ item, onPress }: { item: SurahRowData; onPress: () => void }) {
+function Tabs({ tab, onChange }: { tab: 'chapters' | 'juz'; onChange: (t: 'chapters' | 'juz') => void }) {
   const { colors: T } = useTheme();
-  const meta = item.status ? STATUS_META[item.status] : null;
-  const badgeColor = meta ? T[meta.colorKey] : undefined;
+  const options: Array<{ key: 'chapters' | 'juz'; label: string }> = [
+    { key: 'chapters', label: 'Chapters' },
+    { key: 'juz', label: 'Juz' },
+  ];
+  return (
+    <View style={[tb.wrap, { backgroundColor: T.surfaceSunken }]}>
+      {options.map((o) => {
+        const active = tab === o.key;
+        return (
+          <TouchableOpacity
+            key={o.key}
+            style={[tb.pill, active && { backgroundColor: T.brandPrimary }]}
+            onPress={() => onChange(o.key)}
+            activeOpacity={0.8}
+          >
+            <Text style={[tb.pillText, { color: active ? T.brandOnPrimary : T.textMuted }]}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// ── Surah row (Tarteel style) ─────────────────────────────────────────────────
+
+function SurahRow({ surah, status, percent, onPress }: {
+  surah: SurahMeta; status: StatusKey | null; percent: number; onPress: () => void;
+}) {
+  const { colors: T } = useTheme();
+  const meta = status ? STATUS_META[status] : null;
+  const statusColor = meta ? T[meta.colorKey] : undefined;
 
   return (
-    <TouchableOpacity style={[row.container, { backgroundColor: T.surface }]} onPress={onPress} activeOpacity={0.7}>
-      {/* Number medallion + attention badge */}
-      <View style={row.numWrap}>
-        <View style={[
-          row.numCircle,
-          { backgroundColor: T.brandPrimarySoft },
-          meta?.attention ? { borderWidth: 2, borderColor: badgeColor } : undefined,
-        ]}>
-          <Text style={[row.num, { color: T.brandPrimary }]}>{item.number}</Text>
-        </View>
-        {meta?.attention && (
-          <View style={[row.badge, { backgroundColor: badgeColor, borderColor: T.surface }]} />
-        )}
-      </View>
+    <TouchableOpacity style={[row.wrap, { backgroundColor: T.surface }]} onPress={onPress} activeOpacity={0.7}>
+      {/* status accent bar */}
+      <View style={[row.accent, { backgroundColor: statusColor ?? 'transparent' }]} />
 
-      {/* Names + meta */}
-      <View style={row.meta}>
-        <Text style={[row.arabic, { color: T.textPrimary }]} numberOfLines={1}>{item.arabic}</Text>
-        <Text style={[row.latin, { color: T.textMuted }]} numberOfLines={1}>
-          {item.english} · Juz {juzForPage(item.startPage)} · {item.ayahs} ayahs
-        </Text>
+      {/* number */}
+      <Text style={[row.number, { color: T.brandPrimary }]}>{surah.number}</Text>
 
-        {/* Progress bar (only when there is progress) */}
-        {item.percent > 0 && (
-          <View style={row.progressRow}>
-            <View style={[row.track, { backgroundColor: T.surfaceSunken }]}>
-              <View style={[row.fill, { width: `${item.percent}%`, backgroundColor: badgeColor ?? T.success }]} />
-            </View>
-            <Text style={[row.percent, { color: T.textMuted }]}>{item.percent}%</Text>
+      {/* english + meta */}
+      <View style={row.mid}>
+        <Text style={[row.english, { color: T.textPrimary }]} numberOfLines={1}>{surah.english}</Text>
+        <Text style={[row.sub, { color: T.textMuted }]}>Juz {juzForPage(surah.startPage)} · {surah.ayahs} ayahs</Text>
+        {meta && (
+          <View style={row.statusLine}>
+            <View style={[row.dot, { backgroundColor: statusColor }]} />
+            <Text style={[row.statusText, { color: statusColor }]}>{meta.label}</Text>
           </View>
         )}
       </View>
 
+      {/* arabic */}
+      <Text style={[row.arabic, { color: T.textPrimary }]} numberOfLines={1}>{surah.arabic}</Text>
+
+      {/* progress underline */}
+      {percent > 0 && (
+        <View style={[row.progressTrack, { backgroundColor: 'transparent' }]}>
+          <View style={[row.progressFill, { width: `${percent}%`, backgroundColor: T.success }]} />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// ── Juz header (divider inside chapters list) ─────────────────────────────────
+
+function JuzHeader({ juz }: { juz: number }) {
+  const { colors: T } = useTheme();
+  return (
+    <View style={[jh.wrap, { backgroundColor: T.backgroundAlt }]}>
+      <Text style={[jh.text, { color: T.textMuted }]}>Juz {juz}</Text>
+      <View style={[jh.line, { backgroundColor: T.divider }]} />
+    </View>
+  );
+}
+
+// ── Juz row (Juz tab) ─────────────────────────────────────────────────────────
+
+function JuzRow({ juz, percent, onPress }: { juz: number; percent: number; onPress: () => void }) {
+  const { colors: T } = useTheme();
+  const [start, end] = juzPageRange(juz);
+  return (
+    <TouchableOpacity style={[row.wrap, { backgroundColor: T.surface }]} onPress={onPress} activeOpacity={0.7}>
+      <Text style={[row.number, { color: T.brandPrimary }]}>{juz}</Text>
+      <View style={row.mid}>
+        <Text style={[row.english, { color: T.textPrimary }]}>Juz {juz}</Text>
+        <Text style={[row.sub, { color: T.textMuted }]}>Pages {start}–{end}</Text>
+      </View>
       <Text style={[row.chevron, { color: T.textDisabled }]}>›</Text>
+      {percent > 0 && (
+        <View style={row.progressTrack}>
+          <View style={[row.progressFill, { width: `${percent}%`, backgroundColor: T.success }]} />
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -169,6 +220,7 @@ export default function QuranBrowserScreen() {
   const [progress, setProgress] = useState<StudentProgressSummary | null>(null);
   const [recent, setRecent] = useState<number[]>([]);
   const [query, setQuery] = useState('');
+  const [tab, setTab] = useState<'chapters' | 'juz'>('chapters');
 
   useFocusEffect(
     useCallback(() => {
@@ -178,7 +230,6 @@ export default function QuranBrowserScreen() {
     }, []),
   );
 
-  // surahNumber → most urgent status, from assignments mapped by page.
   const statusBySurah = useMemo(() => {
     const map = new Map<number, StatusKey>();
     for (const a of assignments) {
@@ -187,101 +238,136 @@ export default function QuranBrowserScreen() {
       if (!key) continue;
       const surahNum = surahForPage(a.pageNumber).number;
       const existing = map.get(surahNum);
-      if (!existing || STATUS_META[key].priority > STATUS_META[existing].priority) {
-        map.set(surahNum, key);
-      }
+      if (!existing || STATUS_META[key].priority > STATUS_META[existing].priority) map.set(surahNum, key);
     }
     return map;
   }, [assignments]);
 
-  // surahNumber → completion percent, from progress snapshot.
   const percentBySurah = useMemo(() => {
     const map = new Map<number, number>();
     for (const s of progress?.surahBreakdown ?? []) {
-      if (s.totalPagesInSurah > 0) {
-        map.set(s.surahNumber, Math.round((s.pagesCompleted / s.totalPagesInSurah) * 100));
-      }
+      if (s.totalPagesInSurah > 0) map.set(s.surahNumber, Math.round((s.pagesCompleted / s.totalPagesInSurah) * 100));
     }
     return map;
   }, [progress]);
 
-  // Build, filter, and sort the surah rows.
-  const rows = useMemo<SurahRowData[]>(() => {
-    const q = query.trim().toLowerCase();
+  const percentByJuz = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const j of progress?.juzBreakdown ?? []) {
+      if (j.totalPagesInJuz > 0) map.set(j.juzNumber, Math.round((j.pagesCompleted / j.totalPagesInJuz) * 100));
+    }
+    return map;
+  }, [progress]);
 
-    const enriched: SurahRowData[] = SURAHS.map((s) => ({
-      ...s,
-      status: statusBySurah.get(s.number) ?? null,
-      percent: percentBySurah.get(s.number) ?? 0,
-    }));
+  const q = query.trim().toLowerCase();
 
-    const filtered = q
-      ? enriched.filter((s) => {
-          const asNum = Number(q);
-          if (!Number.isNaN(asNum)) {
-            // Numeric query matches surah number or a page within the surah's start.
-            return s.number === asNum || s.startPage === asNum;
-          }
-          return (
-            s.english.toLowerCase().includes(q) ||
-            s.arabic.includes(query.trim())
-          );
-        })
-      : enriched;
+  // Chapters tab: merge juz-start events and surah-start events, ordered by page
+  // (juz header before a surah that starts on the same page). Searching flattens
+  // to matching surahs only (no juz separators).
+  const chapterItems = useMemo<ListItem[]>(() => {
+    if (q) {
+      return SURAHS.filter((s) => {
+        const n = Number(q);
+        if (!Number.isNaN(n)) return s.number === n || s.startPage === n;
+        return s.english.toLowerCase().includes(q) || s.arabic.includes(query.trim());
+      }).map((s) => ({
+        type: 'surah' as const,
+        surah: s,
+        status: statusBySurah.get(s.number) ?? null,
+        percent: percentBySurah.get(s.number) ?? 0,
+        key: `s${s.number}`,
+      }));
+    }
 
-    // Needs-attention surahs first (by priority), then by surah number.
-    return filtered.sort((a, b) => {
-      const ap = a.status && STATUS_META[a.status].attention ? STATUS_META[a.status].priority : 0;
-      const bp = b.status && STATUS_META[b.status].attention ? STATUS_META[b.status].priority : 0;
-      if (ap !== bp) return bp - ap;
-      return a.number - b.number;
-    });
-  }, [query, statusBySurah, percentBySurah]);
+    type Ev = { page: number; order: number; juz?: number; surah?: SurahMeta };
+    const events: Ev[] = [
+      ...JUZ_START_PAGES.map((page, i) => ({ page, order: 0, juz: i + 1 })),
+      ...SURAHS.map((s) => ({ page: s.startPage, order: 1, surah: s })),
+    ].sort((a, b) => (a.page - b.page) || (a.order - b.order));
+
+    return events.map((e): ListItem =>
+      e.juz != null
+        ? { type: 'juzHeader', juz: e.juz, key: `j${e.juz}` }
+        : {
+            type: 'surah',
+            surah: e.surah!,
+            status: statusBySurah.get(e.surah!.number) ?? null,
+            percent: percentBySurah.get(e.surah!.number) ?? 0,
+            key: `s${e.surah!.number}`,
+          },
+    );
+  }, [q, query, statusBySurah, percentBySurah]);
+
+  const juzItems = useMemo(() => {
+    const all = Array.from({ length: 30 }, (_, i) => i + 1);
+    const filtered = q ? all.filter((j) => String(j).includes(q)) : all;
+    return filtered.map((juz) => ({ juz, percent: percentByJuz.get(juz) ?? 0 }));
+  }, [q, percentByJuz]);
 
   const goToPage = (page: number) =>
     router.push({ pathname: '/(tabs)/quran/[pageNumber]', params: { pageNumber: String(page) } });
 
-  // If the query is a valid page number, offer a direct jump.
+  // Direct jump when the query is a valid page number (1–604).
   const pageJump = useMemo(() => {
     const n = Number(query.trim());
-    if (!Number.isNaN(n) && n >= 1 && n <= 604) return n;
-    return null;
+    return !Number.isNaN(n) && n >= 1 && n <= 604 ? n : null;
   }, [query]);
+
+  const header = (
+    <View>
+      <View style={styles.searchWrap}><SearchBar value={query} onChange={setQuery} /></View>
+      {q.length === 0 && <RecentlyRead pages={recent} onPress={goToPage} />}
+      {pageJump != null && (
+        <TouchableOpacity
+          style={[styles.jump, { backgroundColor: T.brandPrimarySoft }]}
+          onPress={() => goToPage(pageJump)}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.jumpText, { color: T.brandPrimary }]}>Go to page {pageJump} →</Text>
+        </TouchableOpacity>
+      )}
+      <View style={styles.tabsWrap}><Tabs tab={tab} onChange={setTab} /></View>
+    </View>
+  );
+
+  if (tab === 'juz') {
+    return (
+      <View style={[styles.container, { backgroundColor: T.backgroundAlt }]}>
+        <FlatList
+          data={juzItems}
+          keyExtractor={(it) => `j${it.juz}`}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.list}
+          ListHeaderComponent={header}
+          ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: T.divider }]} />}
+          renderItem={({ item }) => (
+            <JuzRow juz={item.juz} percent={item.percent} onPress={() => goToPage(juzPageRange(item.juz)[0])} />
+          )}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: T.backgroundAlt }]}>
       <FlatList
-        data={rows}
-        keyExtractor={(item) => String(item.number)}
-        contentContainerStyle={styles.list}
+        data={chapterItems}
+        keyExtractor={(it) => it.key}
         keyboardShouldPersistTaps="handled"
-        ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: T.divider }]} />}
-        ListHeaderComponent={
-          <View>
-            <View style={styles.searchWrap}>
-              <SearchBar value={query} onChange={setQuery} />
-            </View>
-
-            {query.length === 0 && <RecentlyRead pages={recent} onPress={goToPage} />}
-
-            {pageJump != null && (
-              <TouchableOpacity
-                style={[styles.jump, { backgroundColor: T.brandPrimarySoft }]}
-                onPress={() => goToPage(pageJump)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.jumpText, { color: T.brandPrimary }]}>
-                  Go to page {pageJump} →
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <Text style={[styles.sectionLabel, { color: T.textMuted }]}>
-              {query.length === 0 ? 'ALL SURAHS' : `${rows.length} RESULT${rows.length === 1 ? '' : 'S'}`}
-            </Text>
-          </View>
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={header}
+        renderItem={({ item }) =>
+          item.type === 'juzHeader' ? (
+            <JuzHeader juz={item.juz} />
+          ) : (
+            <SurahRow
+              surah={item.surah}
+              status={item.status}
+              percent={item.percent}
+              onPress={() => goToPage(item.surah.startPage)}
+            />
+          )
         }
-        renderItem={({ item }) => <SurahRow item={item} onPress={() => goToPage(item.startPage)} />}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={[styles.emptyText, { color: T.textMuted }]}>No surahs match “{query}”.</Text>
@@ -298,23 +384,18 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   list: { paddingBottom: 32 },
   searchWrap: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 },
-  sep: { height: StyleSheet.hairlineWidth, marginLeft: 72 },
+  tabsWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
   jump: { marginHorizontal: 16, marginTop: 8, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10 },
   jumpText: { fontSize: 14, fontWeight: '700' },
+  sep: { height: StyleSheet.hairlineWidth, marginLeft: 56 },
   empty: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 14 },
 });
 
 const sb = StyleSheet.create({
   wrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, height: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth,
   },
   input: { flex: 1, fontSize: 15, padding: 0 },
 });
@@ -323,24 +404,36 @@ const rr = StyleSheet.create({
   wrap: { paddingTop: 12 },
   heading: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingHorizontal: 16, marginBottom: 8 },
   row: { paddingHorizontal: 16, gap: 10 },
-  card: { width: 120, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 12, gap: 2 },
+  card: { width: 130, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 12, gap: 2 },
   cardPage: { fontSize: 13, fontWeight: '700' },
   cardSurah: { fontSize: 14, fontWeight: '600' },
   cardJuz: { fontSize: 11 },
 });
 
+const tb = StyleSheet.create({
+  wrap: { flexDirection: 'row', borderRadius: 12, padding: 3, gap: 3 },
+  pill: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10 },
+  pillText: { fontSize: 14, fontWeight: '700' },
+});
+
+const jh = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
+  text: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  line: { flex: 1, height: StyleSheet.hairlineWidth },
+});
+
 const row = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, gap: 12 },
-  numWrap: { width: 44, height: 44 },
-  numCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  num: { fontSize: 15, fontWeight: '700' },
-  badge: { position: 'absolute', top: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
-  meta: { flex: 1, gap: 3 },
-  arabic: { fontSize: 17, fontWeight: '600', writingDirection: 'rtl' },
-  latin: { fontSize: 12 },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  track: { flex: 1, height: 5, borderRadius: 3, overflow: 'hidden' },
-  fill: { height: 5, borderRadius: 3 },
-  percent: { fontSize: 11, fontWeight: '600', minWidth: 32, textAlign: 'right' },
+  wrap: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, gap: 12, overflow: 'hidden' },
+  accent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
+  number: { width: 28, fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  mid: { flex: 1, gap: 2 },
+  english: { fontSize: 16, fontWeight: '600' },
+  sub: { fontSize: 12 },
+  statusLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  arabic: { fontSize: 20, fontWeight: '600', writingDirection: 'rtl', maxWidth: 130, textAlign: 'right' },
   chevron: { fontSize: 22, fontWeight: '300' },
+  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2.5 },
+  progressFill: { position: 'absolute', left: 0, height: 2.5 },
 });

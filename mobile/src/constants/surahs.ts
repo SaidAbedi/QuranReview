@@ -129,11 +129,20 @@ export const SURAHS: SurahMeta[] = [
 ];
 
 // Start page of each of the 30 juz in the Madani mushaf.
-const JUZ_START_PAGES = [
+export const JUZ_START_PAGES = [
   1, 22, 42, 62, 82, 102, 122, 142, 162, 182,
   202, 222, 242, 262, 282, 302, 322, 342, 362, 382,
   402, 422, 442, 462, 482, 502, 522, 542, 562, 582,
 ];
+
+export const TOTAL_PAGES = 604;
+
+// Inclusive [firstPage, lastPage] page range covered by a juz (1–30).
+export function juzPageRange(juz: number): [number, number] {
+  const start = JUZ_START_PAGES[juz - 1];
+  const end = juz < 30 ? JUZ_START_PAGES[juz] - 1 : TOTAL_PAGES;
+  return [start, end];
+}
 
 // Which juz a given mushaf page falls in (1–30).
 export function juzForPage(page: number): number {

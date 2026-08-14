@@ -74,8 +74,12 @@ export default function QuranPageScreen() {
   const [currentPageId, setCurrentPageId] = useState<string | null>(null);
   const [footerH, setFooterH]         = useState(90); // real height from onLayout
 
+  // RTL mushaf order: page 604 at index 0 … page 1 at the last index. This puts
+  // the next page to the LEFT of the current one, so swiping RIGHT turns to the
+  // next page — the natural direction for an Arabic book. index ↔ page is
+  // TOTAL_QURAN_PAGES - index.
   const pages = useMemo(
-    () => Array.from({ length: TOTAL_QURAN_PAGES }, (_, i) => i + 1),
+    () => Array.from({ length: TOTAL_QURAN_PAGES }, (_, i) => TOTAL_QURAN_PAGES - i),
     [],
   );
 
@@ -128,7 +132,7 @@ export default function QuranPageScreen() {
   const handlePageSettle = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-      const next = Math.min(Math.max(idx + 1, 1), TOTAL_QURAN_PAGES);
+      const next = Math.min(Math.max(TOTAL_QURAN_PAGES - idx, 1), TOTAL_QURAN_PAGES);
       if (next !== currentPage) {
         setCurrentPage(next);
         lastScrollY.current = 0;
@@ -195,7 +199,7 @@ export default function QuranPageScreen() {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        initialScrollIndex={initialPage - 1}
+        initialScrollIndex={TOTAL_QURAN_PAGES - initialPage}
         getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
         keyExtractor={(p) => String(p)}
         onMomentumScrollEnd={handlePageSettle}

@@ -4,7 +4,7 @@ import { mediaService } from './services/MediaService';
 
 app.listen(env.PORT, () => {
   console.log(`QuranReview backend running on port ${env.PORT} [${env.NODE_ENV}]`);
-  console.log(`[QF] env=${env.QURAN_FOUNDATION_ENV} clientId=${env.QURAN_FOUNDATION_CLIENT_ID} oauthBase=${env.QURAN_FOUNDATION_OAUTH_BASE_URL}`);
+  console.log(`[QF] env=${env.QURAN_FOUNDATION_ENV} configured`);
 
   // Ensure Supabase Storage buckets exist (idempotent).
   mediaService.ensureBuckets().catch((err) => {

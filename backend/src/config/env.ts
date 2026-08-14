@@ -73,4 +73,11 @@ export const env = {
     process.env.AUTO_CREATE_STORAGE_BUCKETS === 'true' ||
     (process.env.AUTO_CREATE_STORAGE_BUCKETS === undefined &&
       (process.env.NODE_ENV ?? 'development') !== 'production'),
+
+  // CORS: comma-separated list of allowed origins
+  // Default (dev): localhost:19000 (Expo), localhost:3000 (local)
+  // Production: Set to your actual domain
+  CORS_ORIGINS:
+    process.env.CORS_ORIGINS ??
+    'http://localhost:19000,http://localhost:3000,http://127.0.0.1:19000,http://127.0.0.1:3000',
 } as const;

@@ -18,10 +18,16 @@ export async function authenticate(
   const token = authHeader.slice(7);
 
   try {
+    // Timeout after 10 seconds to prevent hanging on slow Supabase Auth
+    const authPromise = supabaseAdmin.auth.getUser(token);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Auth verification timeout')), 10_000),
+    );
+
     const {
       data: { user: authUser },
       error: authError,
-    } = await supabaseAdmin.auth.getUser(token);
+    } = await Promise.race([authPromise, timeoutPromise]);
 
     if (authError || !authUser) {
       return next(new AppError(401, 'Invalid or expired token'));

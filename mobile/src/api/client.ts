@@ -14,7 +14,26 @@ export class ApiError extends Error {
 
 async function getToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  const session = data.session;
+
+  if (!session?.access_token) return null;
+
+  // Check if token expires within 60 seconds; refresh if needed
+  const expiresAt = session.expires_at ? session.expires_at * 1000 : null;
+  const now = Date.now();
+  const timeUntilExpiry = expiresAt ? expiresAt - now : null;
+
+  if (timeUntilExpiry && timeUntilExpiry < 60_000) {
+    // Token expires soon; refresh silently
+    if (session.refresh_token) {
+      const { data: refreshed } = await supabase.auth.refreshSession({
+        refresh_token: session.refresh_token,
+      });
+      return refreshed?.session?.access_token ?? null;
+    }
+  }
+
+  return session.access_token;
 }
 
 async function request<T>(

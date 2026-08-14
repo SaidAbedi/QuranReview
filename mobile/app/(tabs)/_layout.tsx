@@ -14,8 +14,16 @@ function SignOutButton({ color }: { color: string }) {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          await secureStorage.clearRefreshToken();
-          await supabase.auth.signOut();
+          try {
+            // Clear secure storage and auth session in parallel
+            await Promise.all([
+              secureStorage.clearRefreshToken(),
+              supabase.auth.signOut(),
+            ]);
+          } catch (error) {
+            console.error('Sign out error:', error);
+            // Still signed out from Supabase side, but log the error
+          }
         },
       },
     ]);

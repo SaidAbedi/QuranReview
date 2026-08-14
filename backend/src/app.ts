@@ -11,12 +11,29 @@ import { notificationsRouter } from './routes/notifications';
 import { adminRouter } from './routes/admin';
 import { testUsersRouter } from './routes/test-users';
 import { errorHandler } from './middleware/errorHandler';
+import { env } from './config/env';
 
 const app = express();
 
 // ---- Global middleware ---------------------------------------------------
 
-app.use(cors());
+// CORS: restrict to known frontend origins only
+const allowedOrigins = env.CORS_ORIGINS.split(',').map((origin) => origin.trim());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, Postman, etc.)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS not allowed'));
+      }
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 // ---- Health check (no auth) ---------------------------------------------
